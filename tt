@@ -1,5 +1,113 @@
 #!/bin/bash
 
+# API Configuration
+API_URL="https://server.server.server.com/rest/api/1.0/projects"
+AUTH_TOKEN="your_auth_token"
+
+# Fetch all repositories
+function fetch_repositories() {
+    echo "Fetching all repositories..."
+    local response=$(curl -s -H "Authorization: Bearer $AUTH_TOKEN" -H "Content-Type: application/json" "$API_URL")
+    echo "$response" | grep -o '"name":"[^"]*"' | sed -E 's/"name":"([^"]+)"/\1/'
+}
+
+# Validate projects from projects.txt
+function validate_projects() {
+    local fetched_repos=($(fetch_repositories))
+    local valid_projects=()
+    
+    while IFS= read -r project; do
+        if [[ " ${fetched_repos[*]} " =~ " $project " ]]; then
+            valid_projects+=("$project")
+        else
+            echo "Cannot find project: $project"
+        fi
+    done < projects.txt
+
+    echo "${valid_projects[@]}"
+}
+
+# Search for directories matching the input pattern
+function search_directories() {
+    local project="$1"
+    local pattern="$2"
+    
+    local response=$(curl -s -H "Authorization: Bearer $AUTH_TOKEN" -H "Content-Type: application/json" "$API_URL/$project/browse")
+    local matching_dirs=($(echo "$response" | grep -o '"name":"[^"]*"' | sed -E 's/"name":"([^"]+)"/\1/' | grep "$pattern"))
+
+    if [[ ${#matching_dirs[@]} -eq 0 ]]; then
+        echo "No directories found matching with input pattern $pattern in project $project"
+    else
+        for dir in "${matching_dirs[@]}"; do
+            search_yaml_files "$project" "$dir" "$pattern"
+        done
+    fi
+}
+
+# Search for statefulset YAML files and validate content
+function search_yaml_files() {
+    local project="$1"
+    local directory="$2"
+    local pattern="$3"
+
+    local yaml_file="statefulset-$pattern.yaml"
+    local response=$(curl -s -H "Authorization: Bearer $AUTH_TOKEN" -H "Content-Type: application/json" "$API_URL/$project/browse/$directory")
+    local yaml_match=$(echo "$response" | grep -o '"name":"[^"]*"' | sed -E 's/"name":"([^"]+)"/\1/' | grep "$yaml_file")
+
+    if [[ -z "$yaml_match" ]]; then
+        echo "No statefulset YAML file found in $directory of project $project"
+        return
+    fi
+
+    check_yaml_content "$project" "$directory/$yaml_file"
+}
+
+# Validate YAML content for required key-value pairs
+function check_yaml_content() {
+    local project="$1"
+    local file_path="$2"
+    local file_url="$API_URL/$project/browse/$file_path"
+
+    local file_content=$(curl -s -H "Authorization: Bearer $AUTH_TOKEN" -H "Content-Type: application/json" "$file_url")
+
+    declare -A required_pairs=(
+        ["name: API_SERVER"]="value: uc4webprodny.chicago.cme.com"
+        ["name: API_CLIENT"]="value: 185"
+        ["name: UC4_ENV"]="value: NY"
+        ["name: AGENT_PORT"]="value: 2307"
+    )
+
+    local all_present=true
+    for key in "${!required_pairs[@]}"; do
+        if [[ "$file_content" != *"$key"* ]] || [[ "$file_content" != *"${required_pairs[$key]}"* ]]; then
+            all_present=false
+            break
+        fi
+    done
+
+    if $all_present; then
+        echo "Valid YAML found: $file_url"
+    else
+        echo "Required pairs missing in: $file_url"
+    fi
+}
+
+# Main Execution
+projects=($(validate_projects))
+read -p "Enter the input pattern to search: " pattern
+
+for project in "${projects[@]}"; do
+    search_directories "$project" "$pattern" &
+done
+
+wait
+echo "Scan completed."
+
+
+**********
+
+#!/bin/bash
+
 API_URL="https://server.server.server.com/rest/api/1.0/projects/ABC/repos"
 AUTH_TOKEN="nshehehhe"
 LIMIT=700
