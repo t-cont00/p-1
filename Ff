@@ -12,6 +12,98 @@ check_yaml_content() {
         return
     fi
 
+    # Define required pairs for use5
+    declare -a required_pairs_one_use5=(
+        "name: AGENT_NAME" "value: PRUGE5.*"
+        "name: API_SERVER" "value: uc4webprodny.chicago.cme.com"
+        "name: API_CLIENT" "value: 185"
+        "name: UC4_ENV" "value: NY"
+        "name: APPSERVER1" "value: ucprap0001j.chicago.cme.com"
+        "name: AGENT_PORT" "value: 2307"
+    )
+
+    declare -a required_pairs_two_use5=(
+        "name: AGENT_NAME" "value: PRUGE5.*"
+        "name: API_SERVER" "value: uc4dr.chicago.cme.com"
+        "name: API_CLIENT" "value: 100"
+        "name: UC4_ENV" "value: DR"
+        "name: APPSERVER1" "value: ucdrap0001j.chicago.cme.com"
+        "name: APPSERVER2" "value: ucdrap0002j.chicago.cme.com"
+        "name: APPSERVER3" "value: ucdrap0003j.chicago.cme.com"
+        "name: AGENT_PORT" "value: 2305"
+    )
+
+    # Define required pairs for usc1
+    declare -a required_pairs_one_usc1=(
+        "name: AGENT_NAME" "value: PRUGC1.*"
+        "name: API_SERVER" "value: uc4webprodny.chicago.cme.com"
+        "name: API_CLIENT" "value: 185"
+        "name: UC4_ENV" "value: NY"
+        "name: APPSERVER1" "value: ucprap0001j.chicago.cme.com"
+        "name: AGENT_PORT" "value: 2307"
+    )
+
+    declare -a required_pairs_two_usc1=(
+        "name: AGENT_NAME" "value: PRUGC1.*"
+        "name: API_SERVER" "value: uc4dr.chicago.cme.com"
+        "name: API_CLIENT" "value: 100"
+        "name: UC4_ENV" "value: DR"
+        "name: APPSERVER1" "value: ucdrap0001j.chicago.cme.com"
+        "name: APPSERVER2" "value: ucdrap0002j.chicago.cme.com"
+        "name: APPSERVER3" "value: ucdrap0003j.chicago.cme.com"
+        "name: AGENT_PORT" "value: 2305"
+    )
+
+    # Function to check if all pairs exist in file content
+    check_pair_set() {
+        local -n pairs=$1  # Use nameref for array
+        for ((i = 0; i < ${#pairs[@]}; i += 2)); do
+            local key="${pairs[i]}"
+            local value="${pairs[i+1]}"
+            # Handle wildcard matching by using grep with regex
+            if ! echo "$file_content" | grep -q -E "$key\s*:\s*$value"; then
+                return 1  # Set is not fully present
+            fi
+        done
+        return 0  # Set is fully present
+    }
+
+    # Determine which pairs to check based on file path
+    if [[ "$file_path" == *"use5"* ]]; then
+        if check_pair_set required_pairs_one_use5 || check_pair_set required_pairs_two_use5; then
+            echo "✔ Content Available: $file_url"
+        else
+            echo "❌ Content Not Available: $file_url"
+        fi
+    elif [[ "$file_path" == *"usc1"* ]]; then
+        if check_pair_set required_pairs_one_usc1 || check_pair_set required_pairs_two_usc1; then
+            echo "✔ Content Available: $file_url"
+        else
+            echo "❌ Content Not Available: $file_url"
+        fi
+    else
+        echo "❌ File path does not match expected environments (use5 or usc1)"
+    fi
+}
+
+
+
+
+*********
+check_yaml_content() {
+    local project_name="$1"
+    local file_path="$2"
+    local file_url="$API_URL/$project_name/browse/$file_path"
+
+    # Fetch file content
+    file_content=$(curl -s -H "Authorization: Bearer $AUTH_TOKEN" \
+        -H "Content-Type: application/json" "$file_url")
+
+    # Check if file contains 'statefulset'
+    if [[ "$file_content" != *"statefulset"* ]]; then
+        return
+    fi
+
     # Define required pairs for different environments
     declare -a required_pairs_one_use5=(
         "name: API_SERVER" "value: uc4webprodny.chicago.cme.com"
