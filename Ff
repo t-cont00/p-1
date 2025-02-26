@@ -13,6 +13,105 @@ function check_yaml_content {
         return
     fi
 
+    # Define required key-value pairs
+    declare -a required_pairs_one=( 
+        "name: API_SERVER" "value: uc4webprodny.chicago.cme.com"
+        "name: API_CLIENT" "value: 185"
+        "name: UC4_ENV" "value: NY"
+        "name: APPSERVER1" "value: ucprap0001j.chicago.cme.com"
+        "name: AGENT_PORT" "value: 2307"
+    )
+
+    declare -a required_pairs_two=(
+        "name: API_SERVER" "value: uc4dr.chicago.cme.com"
+        "name: API_CLIENT" "value: 100"
+        "name: UC4_ENV" "value: DR"
+        "name: APPSERVER1" "value: ucdrap0001j.chicago.cme.com"
+        "name: APPSERVER2" "value: ucdrap0002j.chicago.cme.com"
+        "name: APPSERVER3" "value: ucdrap0003j.chicago.cme.com"
+        "name: AGENT_PORT" "value: 2305"
+    )
+
+    # Function to check if all pairs in a set exist in the file
+    function check_pair_set {
+        local -n pairs=$1
+        for pair in "${pairs[@]}"; do
+            if [[ "$file_content" != *"$pair"* ]]; then
+                return 1
+            fi
+        done
+        return 0
+    }
+
+    # Check if either set is fully present
+    if check_pair_set required_pairs_one || check_pair_set required_pairs_two; then
+        echo "✔ Content Available: $file_url"
+    else
+        echo "X Content Not Available: $file_url"
+    fi
+
+    # Extract AGENT_NAME value
+    agent_name=""
+    found_agent_name=false
+
+    while IFS= read -r line; do
+        if [[ "$line" =~ "-name: AGENT_NAME" ]]; then
+            found_agent_name=true
+        elif [[ "$found_agent_name" == true && "$line" =~ "value:" ]]; then
+            agent_name=$(echo "$line" | sed -E 's/.*value:[ ]*([^"]+).*/\1/')
+            break
+        fi
+    done <<< "$(echo "$file_content" | grep '"text":')"
+
+    # Validate AGENT_NAME
+    if [[ -z "$agent_name" ]]; then
+        echo "X Missing AGENT_NAME in file: $file_url"
+        return 1
+    fi
+
+    # Determine expected prefix based on file path
+    local expected_prefix=""
+    if [[ "$file_path" =~ "use5" ]]; then
+        expected_prefix="PRUGE5"
+    elif [[ "$file_path" =~ "usc1" ]]; then
+        expected_prefix="PRUGC1"
+    else
+        echo "Skipping $file_url: Unknown region."
+        return 1
+    fi
+
+    # Extract prefix from AGENT_NAME
+    agent_prefix=$(echo "$agent_name" | grep -oE 'PRUGE5|PRUGC1')
+
+    if [[ -z "$agent_prefix" ]]; then
+        echo "X AGENT_NAME format incorrect in $file_url: $agent_name"
+        return 1
+    elif [[ "$agent_prefix" != "$expected_prefix" ]]; then
+        echo "X Incorrect AGENT_NAME in $file_url: $agent_name (Expected: $expected_prefix)"
+        return 1
+    else
+        echo "✔ Correct AGENT_NAME in $file_url: $agent_name"
+    fi
+}
+
+
+
+
+function check_yaml_content {
+    local project_name="$1"
+    local file_path="$2"
+    local file_url="$API_URL/$project_name/browse/$file_path"
+
+    # Fetch file content (JSON response)
+    file_content=$(curl -s -H "Authorization: Bearer $AUTH_TOKEN" \
+        -H "Content-Type: application/json" \
+        "$file_url")
+
+    # Check if file contains 'statefulset'
+    if [[ "$file_content" != *"statefulset"* ]]; then
+        return
+    fi
+
     # Define two sets of required pairs
     declare -a required_pairs_one=( 
         "name: API_SERVER" "value: uc4webprodny.chicago.cme.com"
