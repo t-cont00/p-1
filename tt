@@ -4,6 +4,120 @@
 API_URL="https://server.server.server.com/rest/api/1.0/projects/ABC/repos"
 AUTH_TOKEN="nshehehhe"
 
+# Function to check YAML content
+function check_yaml_content {
+    local project_name="$1"
+    local file_path="$2"
+    local file_url="$API_URL/$project_name/browse/$file_path"
+
+    # Fetch file content
+    file_content=$(curl -s -H "Authorization: Bearer $AUTH_TOKEN" \
+        -H "Content-Type: application/json" "$file_url")
+
+    # Check if file contains 'statefulset'
+    if [[ "$file_content" != *"statefulset"* ]]; then
+        return
+    fi
+
+    # Define two sets of required pairs
+    declare -a required_pairs_one=(
+        "name: API_SERVER value: uc4webprodny.chicago.cme.com"
+        "name: API_CLIENT value: 185"
+        "name: UC4_ENV value: NY"
+        "name: APPSERVER1 value: ucprap0001j.chicago.cme.com"
+        "name: AGENT_PORT value: 2307"
+    )
+
+    declare -a required_pairs_two=(
+        "name: API_SERVER value: uc4dr.chicago.cme.com"
+        "name: API_CLIENT value: 100"
+        "name: UC4_ENV value: DR"
+        "name: APPSERVER1 value: ucdrap0001j.chicago.cme.com"
+        "name: APPSERVER2 value: ucdrap0002j.chicago.cme.com"
+        "name: APPSERVER3 value: ucdrap0003j.chicago.cme.com"
+        "name: AGENT_PORT value: 2305"
+    )
+
+    # Function to check if all pairs in a set exist in the file
+    function check_pair_set {
+        local -n pairs=$1  # Use nameref for array
+        for pair in "${pairs[@]}"; do
+            if [[ "$file_content" != *"$pair"* ]]; then
+                return 1  # Set is not fully present
+            fi
+        done
+        return 0  # Set is fully present
+    }
+
+    # Check if either set is fully present
+    if check_pair_set required_pairs_one || check_pair_set required_pairs_two; then
+        echo "✔ Content Available: $file_url"
+    else
+        echo "✖ Content Not Available: $file_url"
+    fi
+}
+
+# Function to check if any folder contains the pattern and call `check_yaml_content`
+function search_project_for_pattern {
+    local project_name="$1"
+    local pattern="$2"
+    local base_path="k8s/envs/pr"
+
+    # Fetch the folder structure in `k8s/envs/pr/`
+    response=$(curl -s -H "Authorization: Bearer $AUTH_TOKEN" \
+        -H "Content-Type: application/json" "$API_URL/$project_name/browse/$base_path")
+
+    if [[ "$response" == *"errors"* ]]; then
+        echo "⚠ Project '$project_name' doesn't have the folder: $base_path"
+        return
+    fi
+
+    # Extract folder names
+    folders=($(echo "$response" | grep -o '"name":"[^"]*"' | sed -E 's/"name":"([^"]+)"/\1/'))
+
+    # Flag to track if pattern is found
+    found_pattern=false
+
+    for folder in "${folders[@]}"; do
+        if [[ "$folder" == *"$pattern"* ]]; then
+            found_pattern=true
+            folder_path="$base_path/$folder"
+
+            # Fetch the contents of the matched folder
+            sub_response=$(curl -s -H "Authorization: Bearer $AUTH_TOKEN" \
+                -H "Content-Type: application/json" "$API_URL/$project_name/browse/$folder_path")
+
+            # Extract file names and check for YAML files
+            files=($(echo "$sub_response" | grep -o '"name":"[^"]*"' | sed -E 's/"name":"([^"]+)"/\1/'))
+
+            for file in "${files[@]}"; do
+                if [[ "$file" == *"$pattern"* && "$file" =~ \.ya?ml$ ]]; then
+                    check_yaml_content "$project_name" "$folder_path/$file"
+                fi
+            done
+        fi
+    done
+
+    if [ "$found_pattern" = false ]; then
+        echo "❌ Project '$project_name' doesn't hold the required pattern: '$pattern'"
+    fi
+}
+
+# Main Execution
+read -p "Enter project name: " project_name
+read -p "Enter pattern to search in 'k8s/envs/pr': " pattern
+
+search_project_for_pattern "$project_name" "$pattern"
+
+
+
+!!!!!
+#!/bin/bash
+
+# API Configuration
+API_URL="https://server.server.server.com/rest/api/1.0/projects/ABC/repos"
+AUTH_TOKEN="nshehehhe"
+
 LIMIT=700
 START=0
 
