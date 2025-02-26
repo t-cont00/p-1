@@ -1,3 +1,38 @@
+# Extract agent name correctly and convert to lowercase
+agent_name=$(echo "$file_content" | grep -Po 'AGENT_NAME:\s*value:\s*"\K[^"]+')
+
+# Function to validate agent_name based on file_path
+function validate_agent_name {
+    local file_path="$1"
+    local agent_name="$2"
+
+    # Convert agent_name to lowercase for case-insensitive comparison
+    local agent_name_lower=$(echo "$agent_name" | tr '[:upper:]' '[:lower:]')
+
+    if [[ "$file_path" == *"usc1"* ]]; then
+        if [[ "$agent_name_lower" != *"c1"* ]]; then
+            echo "❌ Mismatch: Expected 'C1' in agent name but got '$agent_name' for file '$file_path'"
+            return 1
+        fi
+    elif [[ "$file_path" == *"use5"* ]]; then
+        if [[ "$agent_name_lower" != *"e5"* ]]; then
+            echo "❌ Mismatch: Expected 'E5' in agent name but got '$agent_name' for file '$file_path'"
+            return 1
+        fi
+    fi
+
+    echo "✅ Agent name '$agent_name' is correctly mapped to '$file_path'"
+    return 0
+}
+
+# Validate agent name against file path
+validate_agent_name "$file_path" "$agent_name"
+
+
+
+
+
+
 # Function to validate agent_name based on file_path
 function validate_agent_name {
     local file_path="$1"
