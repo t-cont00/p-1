@@ -1,0 +1,72 @@
+check_yaml_content() {
+    local project_name="$1"
+    local file_path="$2"
+    local file_url="$API_URL/$project_name/browse/$file_path"
+
+    # Fetch file content
+    file_content=$(curl -s -H "Authorization: Bearer $AUTH_TOKEN" \
+        -H "Content-Type: application/json" "$file_url")
+
+    # Check if file contains 'statefulset'
+    if [[ "$file_content" != *"statefulset"* ]]; then
+        return
+    fi
+
+    # Define required pairs for validation
+    declare -a required_pairs_one=(
+        "name: API_SERVER" "value: uc4webprodny.chicago.cme.com"
+        "name: API_CLIENT" "value: 185"
+        "name: UC4_ENV" "value: NY"
+        "name: APPSERVER1" "value: ucprap0001j.chicago.cme.com"
+        "name: AGENT_PORT" "value: 2307"
+    )
+
+    declare -a required_pairs_two=(
+        "name: API_SERVER" "value: uc4dr.chicago.cme.com"
+        "name: API_CLIENT" "value: 100"
+        "name: UC4_ENV" "value: DR"
+        "name: APPSERVER1" "value: ucdrap0001j.chicago.cme.com"
+        "name: APPSERVER2" "value: ucdrap0002j.chicago.cme.com"
+        "name: APPSERVER3" "value: ucdrap0003j.chicago.cme.com"
+        "name: AGENT_PORT" "value: 2305"
+    )
+
+    # Function to check if all pairs in a set exist
+    check_pair_set() {
+        local -n pairs=$1  # Use nameref for array
+        for pair in "${pairs[@]}"; do
+            if [[ "$file_content" != *"$pair"* ]]; then
+                return 1  # Set is not fully present
+            fi
+        done
+        return 0  # Set is fully present
+    }
+
+    # Check if either required pair set is fully present
+    if check_pair_set required_pairs_one || check_pair_set required_pairs_two; then
+        echo "✔ Content Available: $file_url"
+    else
+        echo "❌ Content Not Available: $file_url"
+    fi
+
+    # Extract AGENT_NAME value
+    agent_name=$(echo "$file_content" | grep -A1 'name: AGENT_NAME' | grep 'value:' | awk -F 'value: ' '{print $2}' | tr -d '"')
+
+    # Determine expected environment based on AGENT_NAME
+    expected_env=""
+    if [[ "$agent_name" == PRUGC1* ]]; then
+        expected_env="usc1"
+    elif [[ "$agent_name" == PRUGE5* ]]; then
+        expected_env="use5"
+    fi
+
+    # Extract actual environment from file path
+    actual_env=$(echo "$file_path" | awk -F '/' '{print $(NF-1)}')
+
+    # Validate AGENT_NAME against file path environment
+    if [[ -n "$expected_env" && "$expected_env" == "$actual_env" ]]; then
+        echo "✔ AGENT_NAME ($agent_name) is present correctly in $file_path"
+    else
+        echo "❌ AGENT_NAME ($agent_name) is incorrect for path $file_path"
+    fi
+}
