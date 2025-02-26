@@ -1,3 +1,18 @@
+agent_value=$(echo "$file_content" | jq -r '.[] | select(.text | test("name: AGENT NAME"; "i")) | .text' | sed -n 2p | awk '{print $2}')
+
+        # Validate AGENT_NAME
+        if [[ -z "$agent_value" ]]; then
+            echo "X Missing AGENT_NAME: $file_url"
+            return 1
+        elif [[ ! "$agent_value" =~ ^$expected_prefix ]]; then
+            echo "X Incorrect AGENT_NAME in $file_url: $agent_value"
+            return 1
+        fi
+
+        return 0
+    }
+-----
+
 function check_yaml_content {
     local project_name="$1"
     local file_path="$2"
