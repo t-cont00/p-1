@@ -1,3 +1,60 @@
+function check_yaml_content {
+    local project_name="$1"
+    local file_path="$2"
+    local file_url="$API_URL/$project_name/browse/$file_path"
+
+    # Fetch file content (JSON response)
+    file_content=$(curl -s -H "Authorization: Bearer $AUTH_TOKEN" \
+        -H "Content-Type: application/json" \
+        "$file_url")
+
+    # Check if file contains 'statefulset'
+    if [[ "$file_content" != *"statefulset"* ]]; then
+        return
+    fi
+
+    # Extract YAML content from the JSON response
+    yaml_content=$(echo "$file_content" | grep -oP '(?<=text": ")[^"]+' | sed 's/\\n/\n/g')
+
+    # Extract AGENT_NAME value
+    agent_value=$(echo "$yaml_content" | awk '/-name: AGENT_NAME/{getline; print $2}')
+
+    # Check if we successfully extracted an agent name
+    if [[ -z "$agent_value" ]]; then
+        echo "X Missing AGENT_NAME in file: $file_url"
+        return 1
+    fi
+
+    # Determine expected prefix based on file path
+    local expected_prefix=""
+    if [[ "$file_path" =~ "use5" ]]; then
+        expected_prefix="PRUGE5"
+    elif [[ "$file_path" =~ "usc1" ]]; then
+        expected_prefix="PRUGC1"
+    else
+        echo "Skipping $file_url: Unknown region."
+        return 1
+    fi
+
+    # Extract only the relevant prefix (PRUGE5 or PRUGC1)
+    agent_prefix=$(echo "$agent_value" | grep -oE 'PRUGE5|PRUGC1')
+
+    # Validate AGENT_NAME
+    if [[ -z "$agent_prefix" ]]; then
+        echo "X AGENT_NAME format incorrect in $file_url: $agent_value"
+        return 1
+    elif [[ "$agent_prefix" != "$expected_prefix" ]]; then
+        echo "X Incorrect AGENT_NAME in $file_url: $agent_value (Expected: $expected_prefix)"
+        return 1
+    else
+        echo "✔ Correct AGENT_NAME in $file_url: $agent_value"
+    fi
+}
+
+
+
+
+
 agent_value=$(echo "$file_content" | jq -r '.[] | select(.text | test("name: AGENT NAME"; "i")) | .text' | sed -n 2p | awk '{print $2}')
 
         # Validate AGENT_NAME
