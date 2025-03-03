@@ -38,6 +38,79 @@ if [ ! -f "$APPS_FILE" ]; then
     exit 1
 fi
 
+# Function to recursively search for app folders inside a repository
+search_repo() {
+    local repo="$1"
+    echo "Processing repository: $repo"
+
+    BASE_PATH="https://server.server.abc.com/rest/api/1.0/projects/$repo/browse/k8s/envs/pr"
+
+    # Fetch all folders recursively inside 'pr'
+    response=$(curl -s -H "Authorization: Bearer $AUTH_TOKEN" "$BASE_PATH?limit=1000")
+    
+    # Extract all folder names
+    folders=$(echo "$response" | jq -r '.values[].path' || true)
+
+    echo "  Found folders in $repo:"
+    echo "$folders"
+
+    for folder in $folders; do
+        # Match pattern: app-{number} or app-{number}-dmz
+        if [[ "$folder" =~ app-[0-9]+(-dmz)? ]]; then
+            echo "  ✅ Match Found: $folder -> $repo"
+            echo "$folder -> $repo" >> "$MATCHED_FILE"
+        fi
+    done
+}
+
+export -f search_repo  # Export function for parallel execution
+
+# Run searches in parallel for all repositories
+cat "$REPOS_FILE" | xargs -P 10 -I {} bash -c 'search_repo "{}"'
+
+echo "Mapping complete. Check matched_results.txt for output."
+
+********
+#!/bin/bash
+
+API_URL="https://server.server.abc.com/rest/api/1.0/projects/FFF/repos"
+AUTH_TOKEN="HSJSHSHSH"
+LIMIT=700  # Adjust as needed
+START=0
+REPOS_FILE="repositories.txt"
+APPS_FILE="appd.txt"
+MATCHED_FILE="matched_results.txt"
+
+# Ensure previous matched results are cleared
+> "$MATCHED_FILE"
+
+echo "Fetching all repositories..."
+
+# Fetch all repositories and store them in a file
+while true; do
+    response=$(curl -s -H "Authorization: Bearer $AUTH_TOKEN" -H "Content-Type: application/json" "$API_URL?limit=$LIMIT&start=$START")
+
+    # Extract repository names using jq and save to file
+    echo "$response" | jq -r '.values[].name' >> "$REPOS_FILE"
+
+    # Check if it's the last page
+    is_last_page=$(echo "$response" | jq -r '.isLastPage')
+    if [ "$is_last_page" == "true" ]; then
+        break
+    fi
+
+    # Get next start index
+    START=$(echo "$response" | jq -r '.nextPageStart')
+done
+
+echo "Total repositories fetched: $(wc -l < "$REPOS_FILE")"
+
+# Check if appd.txt exists
+if [ ! -f "$APPS_FILE" ]; then
+    echo "appd.txt file not found!"
+    exit 1
+fi
+
 # Store app-IDs in an associative array
 declare -A APP_IDS
 while IFS= read -r line; do
