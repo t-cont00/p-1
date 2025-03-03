@@ -1,0 +1,97 @@
+from flask import Flask, render_template, request, jsonify
+from google.cloud import storage
+from bs4 import BeautifulSoup
+from datetime import datetime, timezone, timedelta
+import os
+
+@app.route('/results', methods=['GET'])
+def results():
+    """Displays results for the selected date and time range."""
+    
+    # Fetch environment, region, and date from request
+    environment = request.args.get('environment')
+    region = request.args.get('region')
+    date = request.args.get('date')
+    start_time = request.args.get('start_time', '00:00:00')
+    end_time = request.args.get('end_time', '23:59:59')
+
+    # Convert time format from hh:mm:ss → HH-MM-SS (to match filenames)
+    start_time_formatted = start_time.replace(":", "-")
+    end_time_formatted = end_time.replace(":", "-")
+
+    # Debugging
+    print(f"Received: {environment}, {region}, {date}, {start_time} - {end_time}")
+
+    # Get available dates for environment & region
+    available_dates = list_dates(environment, region)
+
+    components_by_appid = {}
+    client = storage.Client()
+    bucket = client.bucket(BUCKET_NAME)
+    project_id = "prj-dv-ytest-ab-1485"
+    app_ids = set()
+
+    # Get current timestamp in CST
+    utc_now = datetime.now(timezone.utc)
+    cst_now = utc_now.astimezone(timezone(timedelta(hours=-6)))
+    timestamp_cst = cst_now.strftime('%Y-%m-%d %I:%M:%S %p CST')
+
+    # Fetch latest timestamp for the selected environment/region/date
+    latest_timestamp = get_latest_blob_timestamp(environment, region, date)
+
+    # Start execution timer
+    start_exec_time = time.time()
+
+    # Fetch data for all app IDs under the selected environment, region, and date
+    for blob in bucket.list_blobs(prefix=f"{environment}/{region}/{date}/"):
+        if blob.name.endswith('.html'):
+            parts = blob.name.split('/')
+
+            # Extract time from filename (last part of path)
+            time_filename = parts[-1].replace(".html", "")
+
+            # Check if the file falls within the selected time range
+            if start_time_formatted <= time_filename <= end_time_formatted:
+                if len(parts) >= 5:  # Matching the path structure
+                    app_id = parts[3]  # Extract app_id
+                    app_ids.add(app_id)
+
+                    html_content = blob.download_as_text()
+                    details = parse_html(html_content)
+
+                    if details:
+                        details['more_details'] = f"https://storage.cloud.google.com/{bucket.name}/{blob.name}?project={project_id}"
+                        details['app_id'] = app_id
+
+                        component_key = details['Component Name']
+
+                        # Store only the latest execution for each component
+                        if app_id not in components_by_appid:
+                            components_by_appid[app_id] = {}
+
+                        if component_key in components_by_appid[app_id]:
+                            existing = components_by_appid[app_id][component_key]
+                            if details['Time of Execution'] > existing['Time of Execution']:
+                                components_by_appid[app_id][component_key] = details
+                        else:
+                            components_by_appid[app_id][component_key] = details
+
+    # Stop execution timer
+    end_exec_time = time.time()
+    execution_time = end_exec_time - start_exec_time
+    print(f"Execution Time: {execution_time:.4f} seconds")
+
+    # Flatten components for each App ID
+    for app_id in components_by_appid:
+        components_by_appid[app_id] = list(components_by_appid[app_id].values())
+
+    return render_template(
+        'results.html',
+        environment=environment,
+        region=region,
+        date=date,
+        available_dates=available_dates,
+        components_by_appid=components_by_appid,
+        timestamp_cst=timestamp_cst,
+        latest_timestamp=latest_timestamp
+    )
