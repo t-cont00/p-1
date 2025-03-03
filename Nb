@@ -1,3 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Select Filters</title>
+</head>
+<body>
+
+<h2>Select Environment, Region, Date, and Time Range</h2>
+
+<form action="/results" method="get">
+    <!-- Environment Dropdown -->
+    <label for="environment">Environment:</label>
+    <select id="environment" name="environment" required>
+        <option value="">Select Environment</option>
+        <option value="dv">DV</option>
+        <option value="qa">QA</option>
+        <option value="pr">PR</option>
+    </select>
+
+    <!-- Region Dropdown -->
+    <label for="region">Region:</label>
+    <select id="region" name="region" required>
+        <option value="">Select Region</option>
+    </select>
+
+    <!-- Date Dropdown -->
+    <label for="date">Date:</label>
+    <select id="date" name="date" required>
+        <option value="">Select Date</option>
+    </select>
+
+    <!-- Start Time Dropdown -->
+    <label for="start_time">Start Time (24hr):</label>
+    <select id="start_time" name="start_time" required></select>
+
+    <!-- End Time Dropdown -->
+    <label for="end_time">End Time (24hr):</label>
+    <select id="end_time" name="end_time" required></select>
+
+    <button type="submit">View Results</button>
+</form>
+
+<script>
+    // Function to populate time dropdowns
+    function populateTimeDropdown(dropdownId) {
+        let dropdown = document.getElementById(dropdownId);
+        dropdown.innerHTML = ""; // Clear previous options
+
+        for (let h = 0; h < 24; h++) { // Hours: 00 to 23
+            for (let m = 0; m < 60; m += 15) { // Minutes: 00, 15, 30, 45
+                let s = "00"; // Keep seconds at 00
+                let timeValue = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${s}`;
+                let option = document.createElement("option");
+                option.value = timeValue;
+                option.textContent = timeValue;
+                dropdown.appendChild(option);
+            }
+        }
+    }
+
+    // Populate start and end time dropdowns
+    populateTimeDropdown("start_time");
+    populateTimeDropdown("end_time");
+
+    // Set default values (Start: 00:00:00, End: 23:59:59)
+    document.getElementById("start_time").value = "00:00:00";
+    document.getElementById("end_time").value = "23:59:59";
+
+    // Fetch regions when environment is selected
+    document.getElementById("environment").addEventListener("change", function () {
+        let env = this.value;
+        if (env) {
+            fetch(`/regions/${env}`)
+                .then(response => response.json())
+                .then(data => {
+                    let regionDropdown = document.getElementById("region");
+                    regionDropdown.innerHTML = '<option value="">Select Region</option>';
+                    data.forEach(region => {
+                        let option = document.createElement("option");
+                        option.value = region;
+                        option.textContent = region;
+                        regionDropdown.appendChild(option);
+                    });
+                });
+        }
+    });
+
+    // Fetch dates when region is selected
+    document.getElementById("region").addEventListener("change", function () {
+        let env = document.getElementById("environment").value;
+        let region = this.value;
+        if (env && region) {
+            fetch(`/dates/${env}/${region}`)
+                .then(response => response.json())
+                .then(data => {
+                    let dateDropdown = document.getElementById("date");
+                    dateDropdown.innerHTML = '<option value="">Select Date</option>';
+                    data.forEach(date => {
+                        let option = document.createElement("option");
+                        option.value = date;
+                        option.textContent = date;
+                        dateDropdown.appendChild(option);
+                    });
+                });
+        }
+    });
+
+</script>
+
+</body>
+</html>
+
+
+****
 from flask import Flask, render_template, request, jsonify
 from google.cloud import storage
 from bs4 import BeautifulSoup
