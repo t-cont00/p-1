@@ -6,14 +6,14 @@ AUTH_TOKEN="HSJSHSHSH"
 # Define the pattern to search inside YAML files
 PATTERN="nodeaffinity:.*RequiredDuringSchedule"
 
-# Function to search for YAML files and check content
-function search_yaml_files {
+# Function to recursively scan directories and check YAML files
+function scan_project {
     local project_name="$1"
     local base_path="browse"
 
     echo "🔍 Scanning project: $project_name"
 
-    # Recursively list all directories under browse
+    # Fetch all directories and files inside browse/
     response=$(curl -s -H "Authorization: Bearer $AUTH_TOKEN" "$API_URL/$project_name/$base_path")
 
     if [[ "$response" == *"errors"* ]]; then
@@ -21,34 +21,43 @@ function search_yaml_files {
         return
     fi
 
-    # Extract all subdirectories & files
+    # Extract all items (directories & files)
     items=($(echo "$response" | grep -o '"name":"[^"]*' | sed -E 's/"name":"([^"]+)"/\1/'))
 
-    for item in "${items[@]}"; do
-        full_path="$base_path/$item"
+    # Function to recursively traverse directories
+    function traverse {
+        local current_path="$1"
 
         # Fetch subdirectories and files
-        sub_response=$(curl -s -H "Authorization: Bearer $AUTH_TOKEN" "$API_URL/$project_name/$full_path")
+        sub_response=$(curl -s -H "Authorization: Bearer $AUTH_TOKEN" "$API_URL/$project_name/$current_path")
         sub_items=($(echo "$sub_response" | grep -o '"name":"[^"]*' | sed -E 's/"name":"([^"]+)"/\1/'))
 
         for sub_item in "${sub_items[@]}"; do
-            sub_item_path="$full_path/$sub_item"
+            sub_item_path="$current_path/$sub_item"
 
-            # If it's a YAML file, scan for the pattern
-            if [[ "$sub_item" == *.yaml || "$sub_item" == *.yml ]]; then
-                file_content=$(curl -s -H "Authorization: Bearer $AUTH_TOKEN" "$API_URL/$project_name/$sub_item_path")
+            # If it's a directory, recursively traverse it
+            if [[ ! "$sub_item" == *.* ]]; then
+                traverse "$sub_item_path"
+            else
+                # If it's a YAML file, check for the pattern
+                if [[ "$sub_item" == *.yaml || "$sub_item" == *.yml ]]; then
+                    file_content=$(curl -s -H "Authorization: Bearer $AUTH_TOKEN" "$API_URL/$project_name/$sub_item_path")
 
-                if [[ "$file_content" =~ $PATTERN ]]; then
-                    echo "✅ Match found in: $project_name/$sub_item_path"
+                    if [[ "$file_content" =~ $PATTERN ]]; then
+                        echo "✅ Match found in: $project_name/$sub_item_path"
+                    fi
                 fi
             fi
         done
-    done
+    }
+
+    # Start recursive traversal from 'browse/' directory
+    traverse "$base_path"
 }
 
 # Process each project from projects.txt
 while IFS= read -r project; do
-    search_yaml_files "$project"
+    scan_project "$project"
 done < projects.txt
 
 echo "✅ Scan completed!"
