@@ -2,17 +2,28 @@
 def results():
     """Result page for selected time range with region and date. Falls back to latest data if no files match the range."""
 
-    region = request.args.get('region')
-    date = request.args.get('date')
+    region = request.args.get('region', '').strip()
+    date = request.args.get('date', '').strip()
 
-    start_time = request.args.get('start_time', '00:00:00')
-    end_time = request.args.get('end_time', '23:59:59')
+    # Ensure we get the actual user input values, not just default
+    start_time = request.args.get('start_time')
+    end_time = request.args.get('end_time')
+
+    # Use defaults only if no value was provided
+    if not start_time:
+        start_time = '00:00:00'
+    if not end_time:
+        end_time = '23:59:59'
 
     start_time_formatted = start_time.replace(":", "-")
     end_time_formatted = end_time.replace(":", "-")
 
     # Debugging
     print(f"Received: Region={region}, Date={date}, Start Time={start_time}, End Time={end_time}")
+
+    # Ensure date is selected, otherwise alert the user
+    if not date:
+        return render_template('results.html', error_message="Please select a valid date.", region=region)
 
     # Get available dates for region
     available_dates = list_dates(region)
