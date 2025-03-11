@@ -1,54 +1,113 @@
 import requests
+import urllib3
 import re
 
-def fetch_repositories(api_url, auth_token):
-    headers = {"Authorization": f"Bearer {auth_token}"}
-    response = requests.get(api_url, headers=headers)
-    
-    if response.status_code == 200:
-        return [repo['slug'] for repo in response.json().get('values', [])]
-    else:
-        print(f"Failed to fetch repositories: {response.status_code} - {response.text}")
+# Disable SSL warnings
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# Bitbucket API Credentials
+API_URL = "https://server.server.server.com/rest/api/1.0/projects/ABC/repos"
+AUTH_TOKEN = "nshehehhe"
+HEADERS = {
+    "Authorization": f"Bearer {AUTH_TOKEN}",
+    "Content-Type": "application/json"
+}
+LIMIT = 700  # Fetch up to 700 repositories per API call
+
+
+def fetch_repositories():
+    """Fetch all repositories from the Bitbucket API."""
+    repos = []
+    start = 0
+
+    while True:
+        response = requests.get(f"{API_URL}?limit={LIMIT}&start={start}", headers=HEADERS, verify=False)
+        if response.status_code != 200:
+            print(f"Error fetching repositories: {response.status_code} - {response.text}")
+            return []
+
+        data = response.json()
+        repos.extend([repo["name"] for repo in data.get("values", [])])
+
+        # Check if it's the last page
+        if data.get("isLastPage", False):
+            break
+
+        start = data.get("nextPageStart", None)
+        if start is None:
+            break
+
+    return repos
+
+
+def fetch_directory_contents(project_name, base_path):
+    """Fetch folders and files inside a given project directory via API."""
+    url = f"{API_URL}/{project_name}/browse/{base_path}"
+    response = requests.get(url, headers=HEADERS, verify=False)
+
+    if response.status_code != 200:
         return []
 
-def fetch_repository_contents(api_url, auth_token, project, repo, path=""):
-    headers = {"Authorization": f"Bearer {auth_token}"}
-    response = requests.get(f"{api_url}/{repo}/browse/{path}", headers=headers)
-    
-    if response.status_code == 200:
-        return response.json().get('children', {}).get('values', [])
-    else:
-        print(f"Failed to fetch contents for {repo}/{path}: {response.status_code} - {response.text}")
-        return []
+    data = response.json()
+    return [item["name"] for item in data.get("children", {}).get("values", [])]
 
-def search_pattern(api_url, auth_token, project, repo, path, pattern, results):
-    contents = fetch_repository_contents(api_url, auth_token, project, repo, path)
-    
+
+def search_in_directory(project_name, base_path, pattern):
+    """Recursively search for the pattern in folder and file names."""
+    matching_items = []
+    contents = fetch_directory_contents(project_name, base_path)
+
     for item in contents:
-        name = item['path']['name']
-        if re.search(pattern, name):
-            results.append(f"{repo}/{path}/{name}")
-        
-        if item['type'] == 'DIRECTORY':
-            search_pattern(api_url, auth_token, project, repo, f"{path}/{name}", pattern, results)
+        full_path = f"{base_path}/{item}"
+
+        # Check if the item matches the pattern
+        if re.search(pattern, item, re.IGNORECASE):
+            matching_items.append(full_path)
+
+        # If it's a directory, recursively search inside
+        if "." not in item:  # Assuming directories don't have a file extension
+            matching_items.extend(search_in_directory(project_name, full_path, pattern))
+
+    return matching_items
+
 
 def main():
-    API_URL = "https://server.server.server.com/rest/api/1.0/projects/ABC/repos"
-    AUTH_TOKEN = "nshehehhe"
+    print("Fetching all sub-repositories...\n")
+    repositories = fetch_repositories()
+
+    if not repositories:
+        print("No repositories found. Exiting...")
+        return
+
+    print(f"Total repositories found: {len(repositories)}\n")
     
-    pattern = input("Enter pattern to search for: ")
-    repositories = fetch_repositories(API_URL, AUTH_TOKEN)
-    
-    for repo in repositories:
-        results = []
-        search_pattern(API_URL, AUTH_TOKEN, "ABC", repo, "", pattern, results)
-        
-        if results:
-            print(f"Matches in {repo}:")
-            for match in results:
-                print(f"  {match}")
+    num_projects = int(input("Enter the number of projects you want to search: "))
+    selected_projects = []
+
+    for i in range(num_projects):
+        project_name = input(f"Enter project name {i+1}: ").strip()
+        if project_name in repositories:
+            selected_projects.append(project_name)
         else:
-            print(f"No matches found in {repo}.")
+            print(f"❌ No such project found: {project_name}")
+
+    if not selected_projects:
+        print("❌ No valid projects selected. Exiting...")
+        return
+
+    pattern = input("Enter the pattern to search inside 'k8s/envs/pr' folder: ").strip()
+    
+    for project in selected_projects:
+        print(f"\n🔍 Searching in project: {project}")
+        base_path = "k8s/envs/pr"
+        matches = search_in_directory(project, base_path, pattern)
+
+        if matches:
+            print("\n✅ Matching folders/files found:")
+            for match in matches:
+                print(f"- {match}")
+        else:
+            print("\n❌ No matching folders or files found.")
 
 if __name__ == "__main__":
     main()
