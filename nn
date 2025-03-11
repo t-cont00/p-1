@@ -1,0 +1,54 @@
+import requests
+import re
+
+def fetch_repositories(api_url, auth_token):
+    headers = {"Authorization": f"Bearer {auth_token}"}
+    response = requests.get(api_url, headers=headers)
+    
+    if response.status_code == 200:
+        return [repo['slug'] for repo in response.json().get('values', [])]
+    else:
+        print(f"Failed to fetch repositories: {response.status_code} - {response.text}")
+        return []
+
+def fetch_repository_contents(api_url, auth_token, project, repo, path=""):
+    headers = {"Authorization": f"Bearer {auth_token}"}
+    response = requests.get(f"{api_url}/{repo}/browse/{path}", headers=headers)
+    
+    if response.status_code == 200:
+        return response.json().get('children', {}).get('values', [])
+    else:
+        print(f"Failed to fetch contents for {repo}/{path}: {response.status_code} - {response.text}")
+        return []
+
+def search_pattern(api_url, auth_token, project, repo, path, pattern, results):
+    contents = fetch_repository_contents(api_url, auth_token, project, repo, path)
+    
+    for item in contents:
+        name = item['path']['name']
+        if re.search(pattern, name):
+            results.append(f"{repo}/{path}/{name}")
+        
+        if item['type'] == 'DIRECTORY':
+            search_pattern(api_url, auth_token, project, repo, f"{path}/{name}", pattern, results)
+
+def main():
+    API_URL = "https://server.server.server.com/rest/api/1.0/projects/ABC/repos"
+    AUTH_TOKEN = "nshehehhe"
+    
+    pattern = input("Enter pattern to search for: ")
+    repositories = fetch_repositories(API_URL, AUTH_TOKEN)
+    
+    for repo in repositories:
+        results = []
+        search_pattern(API_URL, AUTH_TOKEN, "ABC", repo, "", pattern, results)
+        
+        if results:
+            print(f"Matches in {repo}:")
+            for match in results:
+                print(f"  {match}")
+        else:
+            print(f"No matches found in {repo}.")
+
+if __name__ == "__main__":
+    main()
