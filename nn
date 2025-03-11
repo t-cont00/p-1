@@ -40,6 +40,104 @@ def fetch_repositories():
     return repos
 
 
+def fetch_directory_contents(project_name, base_path=""):
+    """Fetch folders and files inside a given project directory recursively."""
+    url = f"{API_URL}/{project_name}/browse/{base_path}"
+    response = requests.get(url, headers=HEADERS, verify=False)
+
+    if response.status_code != 200:
+        return []
+
+    data = response.json()
+    return [item["name"] for item in data.get("children", {}).get("values", [])]
+
+
+def search_in_repository(project_name, base_path, pattern, results):
+    """Recursively search for the pattern in folder and file names in all directories."""
+    contents = fetch_directory_contents(project_name, base_path)
+
+    for item in contents:
+        full_path = f"{base_path}/{item}" if base_path else item  # Avoid leading "/"
+
+        # Check if the item matches the pattern exactly
+        if pattern.lower() == item.lower():  
+            results.append(full_path)
+
+        # If it's a directory, recursively search inside
+        if "." not in item:  # Assuming directories don't have file extensions
+            search_in_repository(project_name, full_path, pattern, results)
+
+
+def main():
+    print("Fetching all sub-repositories...\n")
+    repositories = fetch_repositories()
+
+    if not repositories:
+        print("No repositories found. Exiting...")
+        return
+
+    print(f"Total repositories found: {len(repositories)}\n")
+    
+    pattern = input("Enter the exact folder or file name to search: ").strip()
+    
+    for project in repositories:
+        print(f"\n🔍 Searching in project: {project}")
+        results = []
+        search_in_repository(project, "", pattern, results)
+
+        if results:
+            print("\n✅ Matching folders/files found:")
+            for match in results:
+                print(f"- {match}")
+        else:
+            print("\n❌ No matching folders or files found.")
+
+if __name__ == "__main__":
+    main()
+
+-------------------------
+import requests
+import urllib3
+import re
+
+# Disable SSL warnings
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# Bitbucket API Credentials
+API_URL = "https://server.server.server.com/rest/api/1.0/projects/ABC/repos"
+AUTH_TOKEN = "nshehehhe"
+HEADERS = {
+    "Authorization": f"Bearer {AUTH_TOKEN}",
+    "Content-Type": "application/json"
+}
+LIMIT = 700  # Fetch up to 700 repositories per API call
+
+
+def fetch_repositories():
+    """Fetch all repositories from the Bitbucket API."""
+    repos = []
+    start = 0
+
+    while True:
+        response = requests.get(f"{API_URL}?limit={LIMIT}&start={start}", headers=HEADERS, verify=False)
+        if response.status_code != 200:
+            print(f"Error fetching repositories: {response.status_code} - {response.text}")
+            return []
+
+        data = response.json()
+        repos.extend([repo["name"] for repo in data.get("values", [])])
+
+        # Check if it's the last page
+        if data.get("isLastPage", False):
+            break
+
+        start = data.get("nextPageStart", None)
+        if start is None:
+            break
+
+    return repos
+
+
 def fetch_directory_contents(project_name, base_path):
     """Fetch folders and files inside a given project directory via API."""
     url = f"{API_URL}/{project_name}/browse/{base_path}"
