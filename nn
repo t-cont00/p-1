@@ -1,6 +1,5 @@
 import requests
 import urllib3
-import re
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -29,7 +28,6 @@ def fetch_repositories():
         data = response.json()
         repos.extend([repo["name"] for repo in data.get("values", [])])
 
-        # Check if it's the last page
         if data.get("isLastPage", False):
             break
 
@@ -46,10 +44,18 @@ def fetch_directory_contents(project_name, base_path=""):
     response = requests.get(url, headers=HEADERS, verify=False)
 
     if response.status_code != 200:
+        print(f"⚠️ Error fetching directory: {base_path} in {project_name} - {response.status_code}")
         return []
 
     data = response.json()
-    return [item["name"] for item in data.get("children", {}).get("values", [])]
+    
+    # Debugging: Print API response if structure is incorrect
+    if "children" not in data or "values" not in data["children"]:
+        print(f"⚠️ Unexpected response format at {base_path}: {data}")
+        return []
+
+    # Safely extract names, ensuring 'name' exists in each item
+    return [item.get("name", "UNKNOWN") for item in data["children"]["values"]]
 
 
 def search_in_repository(project_name, base_path, pattern, results):
@@ -57,10 +63,13 @@ def search_in_repository(project_name, base_path, pattern, results):
     contents = fetch_directory_contents(project_name, base_path)
 
     for item in contents:
+        if item == "UNKNOWN":
+            continue  # Skip entries without a valid name
+
         full_path = f"{base_path}/{item}" if base_path else item  # Avoid leading "/"
 
         # Check if the item matches the pattern exactly
-        if pattern.lower() == item.lower():  
+        if pattern.lower() == item.lower():
             results.append(full_path)
 
         # If it's a directory, recursively search inside
