@@ -1,4 +1,64 @@
 import requests
+
+API_URL = "https://server.server.server.com/rest/api/1.0/projects"
+HEADERS = {"Authorization": "Bearer nshehehhe"}
+
+def fetch_directory_contents(project_name, base_path=""):
+    """Fetch folders and files inside a given project directory recursively."""
+    url = f"{API_URL}/{project_name}/browse/{base_path}"
+    print(f"📂 Checking: {url}")  # Debugging print statement
+
+    response = requests.get(url, headers=HEADERS, verify=False)
+
+    if response.status_code != 200:
+        print(f"⚠️ Error fetching directory: {base_path} in {project_name} - {response.status_code}")
+        return []
+
+    data = response.json()
+
+    if "children" not in data or "values" not in data["children"]:
+        print(f"🚨 Unexpected response at {base_path}: {data}")  # <-- Debugging line
+        return []
+
+    items = [(item.get("name"), item.get("type", "")) for item in data["children"]["values"]]
+
+    return items
+
+
+def search_in_directory(project_name, base_path, pattern):
+    """Recursively search inside the given folder for matching files or folders."""
+    items = fetch_directory_contents(project_name, base_path)
+
+    if not items:
+        return  # No folders or files in this directory
+
+    for item_name, item_type in items:
+        full_path = f"{base_path}/{item_name}" if base_path else item_name
+        print(f"🔍 Checking: {full_path}")  # Track each folder being searched
+
+        # If it's a file, check if it matches the pattern
+        if pattern in item_name:
+            print(f"✅ Match Found: {full_path}")
+
+        # If it's a folder, go inside and search deeper
+        if item_type == "DIRECTORY":
+            search_in_directory(project_name, full_path, pattern)
+
+
+def search_projects(projects, pattern):
+    """Iterate through projects and search each one."""
+    for project_name in projects:
+        print(f"\n🔎 Searching in project: {project_name}")
+        search_in_directory(project_name, "", pattern)
+
+
+# Test with sample projects & pattern
+projects = ["project-1", "project-2"]  # Replace with actual project names
+pattern = input("Enter the pattern to search: ")
+search_projects(projects, pattern)
+
+-----------------------
+import requests
 import urllib3
 
 # Disable SSL warnings
