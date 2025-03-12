@@ -126,3 +126,135 @@ def results():
         latest_timestamp=latest_timestamp,
         app_names=app_names
     )
+
+
+-----
+
+@app.route('/results', methods=['GET'])
+def results():
+    """Result page for selected time range with region and date. Falls back to latest data if no files match the range."""
+
+    region = request.args.get('region', '').strip()
+    date = request.args.get('date', '').strip()
+
+    # Ensure we get the actual user input values, not just default
+    start_time = request.args.get('start_time')
+    end_time = request.args.get('end_time')
+
+    # Use defaults only if no value was provided
+    if not start_time:
+        start_time = '00:00:00'
+    if not end_time:
+        end_time = '23:59:59'
+
+    start_time_formatted = start_time.replace(":", "-")
+    end_time_formatted = end_time.replace(":", "-")
+
+    # Debugging
+    print(f"Received: Region={region}, Date={date}, Start Time={start_time}, End Time={end_time}")
+
+    # Ensure date is selected, otherwise alert the user
+    if not date:
+        return render_template('results.html', error_message="Please select a valid date.", region=region)
+
+    # Get available dates for region
+    available_dates = list_dates(region)
+
+    components_by_appid = {}
+    app_names = {}
+
+    client = storage.Client()
+    bucket = client.bucket(BUCKET_NAME)
+
+    project_id = "prj-dv-ytest-ab-1485"
+
+    utc_now = datetime.now(timezone.utc)
+    cst_now = utc_now.astimezone(timezone(timedelta(hours=-6)))
+    timestamp_cst = cst_now.strftime('%Y-%m-%d %I:%M:%S %p CST')
+
+    # Fetch latest timestamp for the selected region/date
+    latest_timestamp = get_latest_blob_timestamp(region, date)
+
+    # Start execution timer
+    start_exec_time = time.time()
+
+    prefix_d = f"log-checkout/{region}/{date}/"
+    print("Fetching details from:", prefix_d)
+
+    blobs = list(bucket.list_blobs(prefix=prefix_d))
+    print("Total blobs found:", len(blobs))
+
+    time_files = []
+
+    # Fetch data for all app IDs under the selected region and date
+    for blob in blobs:
+        if blob.name.endswith('.html'):
+            parts = blob.name.split('/')
+            
+            # Extract time from filename (last part of path)
+            time_filename = parts[-1].replace(".html", "")
+
+            if len(parts) >= 5:
+                app_id = parts[3]  # Extract app_id
+                
+                # Store all available time files
+                time_files.append((time_filename, blob, app_id))
+
+    # Sort time files by time (ascending order)
+    time_files.sort(key=lambda x: x[0])
+
+    # Filter files within selected time range
+    filtered_files = [(t, b, a) for (t, b, a) in time_files if start_time_formatted <= t <= end_time_formatted]
+
+    # If no data found in time range, fall back to latest available file of the selected date
+    if not filtered_files and time_files:
+        latest_file = time_files[-1]  # Get the last file (latest time of the date)
+        filtered_files = [latest_file]
+        print("No data in selected time range. Showing latest file:", latest_file[1].name)
+
+    for time_filename, blob, app_id in filtered_files:
+        html_content = blob.download_as_text()
+        details = parse_html(html_content)
+
+        if details:
+            details['more_details'] = f"https://storage.cloud.google.com/{bucket.name}/{blob.name}?project={project_id}"
+            details['app_id'] = app_id
+
+            component_key = details['Component Name']
+            
+            if app_id not in app_names:
+                app_names[app_id] = details.get('App Name', 'Unknown')
+
+            if app_id not in components_by_appid:
+                components_by_appid[app_id] = {}
+
+            if component_key in components_by_appid[app_id]:
+                existing = components_by_appid[app_id][component_key]
+                
+                # Keep the latest execution time for each component
+                if details['Time of Execution'] > existing['Time of Execution']:
+                    components_by_appid[app_id][component_key] = details
+            else:
+                components_by_appid[app_id][component_key] = details
+
+    # Stop execution timer
+    end_exec_time = time.time()
+    execution_time = end_exec_time - start_exec_time
+    print(f"Execution Time: {execution_time:.4f} seconds")
+
+    # Flatten components for each App ID
+    for app_id in components_by_appid:
+        components_by_appid[app_id] = list(components_by_appid[app_id].values())
+
+    return render_template(
+        'results.html',
+        region=region,
+        date=date,
+        start_time=start_time,
+        end_time=end_time,
+        available_dates=available_dates,
+        components_by_appid=components_by_appid,
+        timestamp_cst=timestamp_cst,
+        latest_timestamp=latest_timestamp,
+        app_names=app_names
+    )
