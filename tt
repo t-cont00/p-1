@@ -1,3 +1,34 @@
+# Function to check YAML conditions in nested format
+function check_yaml_conditions {
+    local project_name="$1"
+    local file_path="$2"
+    local file_url="$API_URL/$project_name/raw/$file_path?at=refs%2Fheads%2Fmain"
+
+    # Fetch file content
+    file_content=$(curl -s -H "Authorization: Bearer $AUTH_TOKEN" \
+        -H "Content-Type: application/json" "$file_url")
+
+    # Convert content into an array of lines
+    IFS=$'\n' read -d '' -r -a lines <<< "$file_content"
+
+    # Iterate through lines to detect the nested pattern
+    for ((i = 0; i < ${#lines[@]} - 2; i++)); do
+        line1=$(echo "${lines[$i]}" | tr -d '[:space:]')      # Remove whitespace
+        line2=$(echo "${lines[$i + 1]}" | tr -d '[:space:]')
+        line3=$(echo "${lines[$i + 2]}" | tr -d '[:space:]')
+
+        # Check for nested YAML pattern
+        if [[ "$line1" == "affinity:" && "$line2" == "nodeAffinity:" && "$line3" == "requiredDuringSchedulingIgnoredDuringExecution:" ]]; then
+            echo "$project_name,$file_url" >> conditions.csv
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+"':!
+
 function check_yaml_conditions {
     local project_name="$1"
     local file_path="$2"
