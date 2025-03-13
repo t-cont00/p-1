@@ -1,3 +1,28 @@
+# Function to check required conditions in a YAML file
+function check_yaml_conditions {
+    local project_name="$1"
+    local file_path="$2"
+    local file_url="$API_URL/$project_name/raw/$file_path?at=refs%2Fheads%2Fmain"
+
+    # Fetch file content
+    file_content=$(curl -s -H "Authorization: Bearer $AUTH_TOKEN" \
+        -H "Content-Type: application/json" "$file_url")
+
+    # First, check if nodeAffinity exists
+    if [[ "$file_content" == *"nodeAffinity"* ]]; then
+        # If nodeAffinity exists, check for specific scheduling conditions
+        if [[ "$file_content" == *"requiredDuringSchedulingIgnoredDuringExecution"* ]] || \
+           [[ "$file_content" == *"preferredDuringSchedulingIgnoredDuringExecution"* ]]; then
+            echo "$project_name,$file_url" >> conditions.csv
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+
+":!"!";";
 # Function to check required conditions in a YAML file using regex
 function check_yaml_conditions {
     local project_name="$1"
