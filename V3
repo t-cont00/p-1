@@ -1,0 +1,115 @@
+#!/bin/bash
+
+API_URL="https://server.server.abc.com/rest/api/1.0/projects/CND/repos"
+AUTH_TOKEN="(Auth-token)"
+LIMIT=700
+START=0
+
+# Declare an array for repositories
+declare -a REPOS
+
+# Function to check required conditions in a YAML file
+check_yaml_conditions() {
+    local project_name="$1"
+    local file_path="$2"
+    local file_url="$API_URL/$project_name/browse/$file_path"
+
+    # Fetch file content with error handling
+    file_content=$(curl -s --fail -H "Authorization: Bearer $AUTH_TOKEN" \
+        -H "Content-Type: application/json" "$file_url")
+
+    if [[ $? -ne 0 ]]; then
+        echo "⚠️ Error fetching file: $file_url"
+        return 1
+    fi
+
+    # Check if the file contains required conditions
+    if grep -qE "requiredDuringSchedulingIgnoredDuringExecution|preferredDuringSchedulingIgnoredDuringExecution" <<< "$file_content"; then
+        echo "✅ Condition available in: $file_url"
+        return 0
+    fi
+
+    return 1
+}
+
+# Recursive function to scan .yaml files under k8s/envs/pr
+search_yaml_files() {
+    local project_name="$1"
+    local base_path="$2"
+
+    # Fetch folder & file list
+    response=$(curl -s --fail -H "Authorization: Bearer $AUTH_TOKEN" \
+        -H "Content-Type: application/json" "$API_URL/$project_name/browse/$base_path")
+
+    if [[ $? -ne 0 ]]; then
+        echo "⚠️ No such folder: $base_path in $project_name"
+        return 1
+    fi
+
+    # Extract directory and file names
+    items=($(echo "$response" | grep -o '"name":"[^"]*"' | sed -E 's/"name":"([^"]+)"/\1/'))
+
+    # Use parallel processing for files
+    for item in "${items[@]}"; do
+        full_path="$base_path/$item"
+
+        if [[ "$item" =~ \.ya?ml$ ]]; then
+            check_yaml_conditions "$project_name" "$full_path" &
+        elif [[ ! "$item" =~ \. ]]; then
+            search_yaml_files "$project_name" "$full_path" &
+        fi
+    done
+
+    # Ensure all background processes finish before continuing
+    wait
+}
+
+# Fetch only valid repositories (exclude common system names)
+fetch_repositories() {
+    START=0
+    while true; do
+        response=$(curl -s --fail -H "Authorization: Bearer $AUTH_TOKEN" \
+            -H "Content-Type: application/json" "$API_URL?limit=$LIMIT&start=$START")
+
+        if [[ $? -ne 0 ]]; then
+            echo "⚠️ Error fetching repositories."
+            return 1
+        fi
+
+        # Extract repository names and filter out unwanted names
+        for repo_name in $(echo "$response" | grep -o '"name":"[^"]*"' | sed -E 's/"name":"([^"]+)"/\1/'); do
+            if [[ "$repo_name" != "ssh" && "$repo_name" != "http" && "$repo_name" != "cloud_native_deploy" ]]; then
+                REPOS+=("$repo_name")
+            fi
+        done
+
+        # Check if it's the last page
+        if grep -q '"isLastPage":true' <<< "$response"; then
+            break
+        fi
+
+        # Get next start index
+        START=$(echo "$response" | grep -o '"nextPageStart":[0-9]*' | sed 's/"nextPageStart"://')
+    done
+}
+
+# Main execution
+fetch_repositories
+
+# Read projects from repo.txt and search in parallel
+mapfile -t PROJECTS < repo.txt
+echo "🔍 Starting search in projects..."
+
+for project_name in "${PROJECTS[@]}"; do
+    if [[ " ${REPOS[*]} " =~ " $project_name " ]]; then
+        echo "📂 Searching in project: $project_name"
+        search_yaml_files "$project_name" "k8s/envs/pr" &
+    else
+        echo "🚫 No such project: $project_name available."
+    fi
+done
+
+# Ensure all parallel processes complete before exiting
+wait
+
+echo "✅ Scan complete!"
