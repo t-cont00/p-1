@@ -1,0 +1,94 @@
+#!/bin/bash
+
+API_URL="https://server.server.abc.com/rest/api/1.0/projects/CND/repos"
+AUTH_TOKEN="(Auth-token)"
+LIMIT=700
+START=0
+
+declare -a REPOS
+
+# Function to check conditions in a YAML file
+check_yaml_conditions() {
+    local project_name="$1"
+    local file_path="$2"
+    local file_url="$API_URL/$project_name/browse/$file_path"
+
+    # Fetch file content efficiently
+    file_content=$(curl -s --compressed -H "Authorization: Bearer $AUTH_TOKEN" \
+        -H "Content-Type: application/json" "$file_url")
+
+    # Check conditions
+    if [[ "$file_content" == *"requiredDuringSchedulingIgnoredDuringExecution"* ]] || \
+       [[ "$file_content" == *"preferredDuringSchedulingIgnoredDuringExecution"* ]]; then
+        echo "✅ Condition found in: $file_url"
+        return 0
+    fi
+    return 1
+}
+
+# Function to scan YAML files in a project
+search_yaml_files() {
+    local project_name="$1"
+    local base_path="$2"
+
+    # Fetch file list
+    response=$(curl -s --compressed -H "Authorization: Bearer $AUTH_TOKEN" \
+        -H "Content-Type: application/json" "$API_URL/$project_name/browse/$base_path")
+
+    # Extract file names using awk (faster than grep+sed)
+    echo "$response" | awk -F '"' '/"name":/ {print $4}' | while read -r item; do
+        local full_path="$base_path/$item"
+
+        # If it's a YAML file, check conditions
+        if [[ "$item" =~ \.ya?ml$ ]]; then
+            check_yaml_conditions "$project_name" "$full_path" &
+        fi
+
+        # If it's a directory, scan recursively in parallel
+        if [[ ! "$item" =~ \. ]]; then
+            search_yaml_files "$project_name" "$full_path" &
+        fi
+    done
+
+    wait  # Wait for all parallel searches to finish
+}
+
+# Fetch all repositories
+fetch_repositories() {
+    while true; do
+        response=$(curl -s --compressed -H "Authorization: Bearer $AUTH_TOKEN" \
+            -H "Content-Type: application/json" "$API_URL?limit=$LIMIT&start=$START")
+
+        # Extract repository names using awk
+        echo "$response" | awk -F '"' '/"name":/ {print $4}' | while read -r repo_name; do
+            if [[ "$repo_name" != "ssh" && "$repo_name" != "http" && "$repo_name" != "cloud_native_deploy" ]]; then
+                REPOS+=("$repo_name")
+            fi
+        done
+
+        # Check if this is the last page
+        if echo "$response" | grep -q '"isLastPage":true'; then
+            break
+        fi
+
+        # Get next start index
+        START=$(echo "$response" | awk -F ':' '/"nextPageStart"/ {print $2}' | tr -d ',')
+    done
+}
+
+# Main execution
+fetch_repositories
+mapfile -t PROJECTS < repo.txt
+
+# Parallel execution of project scanning
+echo "${PROJECTS[@]}" | xargs -n 1 -P 5 -I {} bash -c '
+    project_name="{}"
+    if [[ " ${REPOS[@]} " =~ " $project_name " ]]; then
+        echo "🔍 Searching in project: $project_name"
+        search_yaml_files "$project_name" "k8s/envs/pr"
+    else
+        echo "❌ No such project: $project_name available"
+    fi
+'
+
+echo "✔ Scan complete!"
