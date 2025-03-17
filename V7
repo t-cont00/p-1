@@ -1,0 +1,103 @@
+function check_yaml_content {
+    local project_name="$1"
+    local file_path="$2"
+    local file_url="$API_URL/$project_name/browse/$file_path"
+
+    # Fetch file content
+    file_content=$(curl -s -H "Authorization: Bearer $AUTH_TOKEN" \
+        -H "Content-Type: application/json" "$file_url")
+
+    # Check if file contains 'statefulset'
+    if [[ "$file_content" != *"statefulset"* ]]; then
+        return
+    fi
+
+    # Define required sets
+    declare -a required_pairs_one=( # NY
+        "name: API_SERVER"
+        "value: \"uc4webprodny.chicago.cme.com\""
+        "name: API_CLIENT"
+        "value: \"185\""
+        "name: UC4_ENV"
+        "value: \"NY\""
+        "name: APPSERVER1"
+        "value: \"ucprap0001j.chicago.cme.com\""
+        "name: AGENT_PORT"
+        "value: \"2307\""
+        "replicas: 1"
+    )
+
+    declare -a required_pairs_two=( # DR
+        "name: API_SERVER"
+        "value: \"uc4dr.chicago.cme.com\""
+        "name: API_CLIENT"
+        "value: \"100\""
+        "name: UC4_ENV"
+        "value: \"DR\""
+        "name: APPSERVER1"
+        "value: \"ucdrap0001j.chicago.cme.com\""
+        "name: ARBSERVER2"
+        "value: \"ucdrap0002j.chicago.cme.com\""
+        "name: APPSERVER3"
+        "value: \"ucdrap0003j.chicago.cme.com\""
+        "name: AGENT_PORT"
+        "value: \"2305\""
+        "replicas: 1"
+    )
+
+    # Function to check if all pairs in a set exist in the file
+    function check_pair_set {
+        local -n pairs=$1 # Use nameref for array
+        for pair in "${pairs[@]}"; do
+            if [[ "$file_content" != *"$pair"* ]]; then
+                return 1 # Set is not fully present
+            fi
+        done
+        return 0 # Set is fully present
+    }
+
+    # Extract agent name from file
+    agent_name=$(echo "$file_content" | grep -Po 'AGENT_NAME.*?value:\s*"\K[^"]+' || echo "")
+    replica_count=$(echo "$file_content" | grep -Po 'replicas:\s*\K\d+')
+
+    echo "Replica count: $replica_count"
+
+    # Validate that file path matches ONLY "uc4agent" or "uc4-agent"
+    function validate_agent_name {
+        local file_path="$1"
+        local agent_name="$2"
+
+        # Convert agent name to lowercase for case-insensitive comparison
+        local agent_name_lower=$(echo "$agent_name" | tr '[:upper:]' '[:lower:]')
+
+        # Restrict validation to exact input patterns
+        if [[ ! "$file_path" =~ (^|/)uc4agent(/|$) ]] && [[ ! "$file_path" =~ (^|/)uc4-agent(/|$) ]]; then
+            echo "❌ Skipping: $file_path (Does not match 'uc4agent' or 'uc4-agent')"
+            return 1
+        fi
+
+        if [[ "$file_path" == *"usc1"* ]]; then
+            if [[ "$agent_name_lower" != *"c1"* ]]; then
+                echo "❌ Mismatch: Expected 'C1' in agent name but got '$agent_name' for file '$file_path'"
+                return 1
+            fi
+        elif [[ "$file_path" == *"use5"* ]]; then
+            if [[ "$agent_name_lower" != *"e5"* ]]; then
+                echo "❌ Mismatch: Expected 'E5' in agent name but got '$agent_name' for file '$file_path'"
+                return 1
+            fi
+        fi
+
+        echo "✅ Agent name '$agent_name' is correctly mapped to '$file_path'"
+        return 0
+    }
+
+    # Check if either required set is fully present
+    if check_pair_set required_pairs_one || check_pair_set required_pairs_two; then
+        echo "✅ Content Available: $file_url"
+        validate_agent_name "$file_url" "$agent_name"
+    else
+        echo "❌ Content Not Available: $file_url"
+        validate_agent_name "$file_url" "$agent_name"
+    fi
+}
