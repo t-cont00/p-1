@@ -1,3 +1,54 @@
+import re
+import csv
+import os
+
+# Define CSV file path
+CSV_FILE = "found_conditions.csv"
+
+# Ensure CSV file has a header
+if not os.path.exists(CSV_FILE):
+    with open(CSV_FILE, mode="w", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow(["Project Name", "File URL"])  # Column headers
+
+async def check_yaml_conditions(session, project_name, file_path):
+    """Check if a YAML file contains the required condition with precision."""
+    file_url = f"{API_URL}/{project_name}/browse/{file_path}"
+    print(f"🔍 Checking YAML file: {file_url}")
+
+    file_content = await fetch(session, file_url)
+
+    if file_content:
+        # Convert JSON response to plain text
+        file_text = json.dumps(file_content)
+
+        # Make sure SEARCH_TERMS is a single string, then apply precise regex
+        search_term = SEARCH_TERMS[0]  # Assuming only one term
+        pattern = rf"\b{re.escape(search_term)}\b"  # Ensure it's a whole word
+
+        if re.search(pattern, file_text, re.IGNORECASE):
+            print(f"✅ Condition found in: {file_url}")
+
+            # Write to CSV
+            with open(CSV_FILE, mode="a", newline="") as file:
+                writer = csv.writer(file)
+                writer.writerow([project_name, file_url])
+            
+            return True  # Match found
+
+    return False  # No match found
+
+
+
+
+
+
+
+
+
+
+
+______________
 import asyncio
 import aiohttp
 import json
