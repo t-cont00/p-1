@@ -1,0 +1,180 @@
+from flask import Flask, render_template, request
+from google.cloud import storage
+from datetime import datetime, timezone, timedelta
+import time
+
+
+# ============================================================
+# 📌 1️⃣ GCSManager - Handles Google Cloud Storage Operations
+# ============================================================
+class GCSManager:
+    def __init__(self, bucket_name="dr-checkout"):
+        self.client = storage.Client()
+        self.bucket = self.client.bucket(bucket_name)
+
+    def list_regions(self):
+        """Returns available regions."""
+        return ["usc1", "use5"]  # Modify this based on actual regions
+
+    def list_dates(self, region):
+        """Returns available dates for a given region."""
+        prefix = f"log-checkout/{region}/"
+        blobs = self.bucket.list_blobs(prefix=prefix, delimiter="/")
+        return sorted(set(blob.name.split("/")[2] for blob in blobs if len(blob.name.split("/")) > 2))
+
+    def get_latest_blob_timestamp(self, region, date):
+        """Gets the latest timestamp for the given region and date."""
+        prefix = f"log-checkout/{region}/{date}/"
+        blobs = list(self.bucket.list_blobs(prefix=prefix))
+        if not blobs:
+            return "No data available"
+        latest_blob = max(blobs, key=lambda x: x.updated)
+        return latest_blob.updated.strftime('%Y-%m-%d %I:%M:%S %p CST')
+
+    def list_files(self, region, date):
+        """Lists all files for a given region and date."""
+        prefix = f"log-checkout/{region}/{date}/"
+        return list(self.bucket.list_blobs(prefix=prefix))
+
+    def read_html_file(self, blob):
+        """Reads HTML content from a GCS blob."""
+        return blob.download_as_text()
+
+
+# ============================================================
+# 📌 2️⃣ LogProcessor - Handles Data Extraction & Filtering
+# ============================================================
+class LogProcessor:
+    def __init__(self, gcs_manager):
+        self.gcs_manager = gcs_manager
+
+    def parse_html(self, html_content):
+        """Parses HTML content to extract relevant details."""
+        return {
+            "Component Name": "ExampleComponent",
+            "Time of Execution": datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
+            "App Name": "ExampleApp"
+        }
+
+    def filter_files_by_time(self, blobs, start_time, end_time):
+        """Filters files within the selected time range."""
+        start_time = start_time.replace(":", "-")
+        end_time = end_time.replace(":", "-")
+
+        time_files = []
+
+        for blob in blobs:
+            if blob.name.endswith('.html'):
+                parts = blob.name.split('/')
+                time_filename = parts[-1].replace(".html", "")
+
+                if len(parts) >= 5:
+                    app_id = parts[3]
+                    time_files.append((time_filename, blob, app_id))
+
+        time_files.sort(key=lambda x: x[0])
+
+        filtered_files = [(t, b, a) for (t, b, a) in time_files if start_time <= t <= end_time]
+
+        if not filtered_files and time_files:
+            latest_file = time_files[-1]
+            filtered_files = [latest_file]
+
+        return filtered_files
+
+    def extract_data(self, filtered_files, bucket_name):
+        """Extracts required details from files."""
+        components_by_appid = {}
+        app_names = {}
+
+        for time_filename, blob, app_id in filtered_files:
+            html_content = self.gcs_manager.read_html_file(blob)
+            details = self.parse_html(html_content)
+
+            if details:
+                details['more_details'] = f"https://storage.cloud.google.com/{bucket_name}/{blob.name}"
+                details['app_id'] = app_id
+                component_key = details['Component Name']
+
+                if app_id not in app_names:
+                    app_names[app_id] = details.get('App Name', 'Unknown')
+
+                if app_id not in components_by_appid:
+                    components_by_appid[app_id] = {}
+
+                if component_key in components_by_appid[app_id]:
+                    existing = components_by_appid[app_id][component_key]
+                    if details['Time of Execution'] > existing['Time of Execution']:
+                        components_by_appid[app_id][component_key] = details
+                else:
+                    components_by_appid[app_id][component_key] = details
+
+        for app_id in components_by_appid:
+            components_by_appid[app_id] = list(components_by_appid[app_id].values())
+
+        return components_by_appid, app_names
+
+
+# ============================================================
+# 📌 3️⃣ GCSApp - Main Flask App (Handles UI and Routes)
+# ============================================================
+class GCSApp:
+    def __init__(self, bucket_name="dr-checkout"):
+        self.app = Flask(__name__)
+        self.gcs_manager = GCSManager(bucket_name)
+        self.log_processor = LogProcessor(self.gcs_manager)
+
+        # Routes
+        self.app.add_url_rule("/", view_func=self.index, methods=["GET"])
+        self.app.add_url_rule("/results", view_func=self.results, methods=["GET"])
+
+    def index(self):
+        """Home page with region selection."""
+        regions = self.gcs_manager.list_regions()
+        return render_template("index.html", regions=regions)
+
+    def results(self):
+        """Result page for selected time range with region and date."""
+        region = request.args.get('region')
+        date = request.args.get('date')
+        start_time = request.args.get('start_time', '00:00:00')
+        end_time = request.args.get('end_time', '23:59:59')
+
+        print(f"Received: Region={region}, Date={date}, Start Time={start_time}, End Time={end_time}")
+
+        available_dates = self.gcs_manager.list_dates(region)
+        latest_timestamp = self.gcs_manager.get_latest_blob_timestamp(region, date)
+
+        start_exec_time = time.time()
+
+        blobs = self.gcs_manager.list_files(region, date)
+        filtered_files = self.log_processor.filter_files_by_time(blobs, start_time, end_time)
+        components_by_appid, app_names = self.log_processor.extract_data(filtered_files, self.gcs_manager.bucket.name)
+
+        end_exec_time = time.time()
+        execution_time = end_exec_time - start_exec_time
+        print(f"Execution Time: {execution_time:.4f} seconds")
+
+        return render_template(
+            'results.html',
+            region=region,
+            date=date,
+            start_time=start_time,
+            end_time=end_time,
+            available_dates=available_dates,
+            components_by_appid=components_by_appid,
+            latest_timestamp=latest_timestamp,
+            app_names=app_names
+        )
+
+    def run(self, host="0.0.0.0", port=8080):
+        """Starts the Flask application."""
+        self.app.run(host=host, port=port, debug=True)
+
+
+# ============================================================
+# 📌 Run the Application
+# ============================================================
+if __name__ == "__main__":
+    app = GCSApp()
+    app.run()
