@@ -1,0 +1,177 @@
+from flask import Flask, render_template, request, jsonify
+from google.cloud import storage
+from bs4 import BeautifulSoup
+import os
+
+# Set GCP credentials (Remove if using Workload Identity or default auth)
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "key.json"
+
+# GCS Bucket Name
+BUCKET_NAME = 'dr_checkout_test'
+
+
+class GCSManager:
+    """Handles Google Cloud Storage operations."""
+    
+    def __init__(self, bucket_name=BUCKET_NAME):
+        self.client = storage.Client()
+        self.bucket = self.client.bucket(bucket_name)
+
+    def list_regions(self):
+        """Lists available regions."""
+        regions = set()
+        for blob in self.bucket.list_blobs():
+            parts = blob.name.strip('/').split('/')
+            if len(parts) >= 2:
+                regions.add(parts[1])
+        return sorted(regions)
+
+    def list_dates(self, region):
+        """Lists available dates for a given region."""
+        dates = set()
+        for blob in self.bucket.list_blobs():
+            parts = blob.name.strip('/').split('/')
+            if len(parts) >= 3 and parts[1] == region:
+                dates.add(parts[2])
+        return sorted(dates, reverse=True) if dates else None
+
+    def list_times(self, region, date):
+        """Lists available times for a selected region and date."""
+        times = set()
+        for blob in self.bucket.list_blobs(prefix=f"{region}/{date}/"):
+            filename = blob.name.split("/")[-1]
+            if filename.endswith(".html"):
+                times.add(filename.replace(".html", ""))
+        return sorted(times)
+
+    def fetch_html_from_gcs(self, region, date, app_id, filename):
+        """Fetches an HTML file from the GCS bucket."""
+        blob = self.bucket.blob(f"{region}/{date}/{app_id}/{filename}")
+        return blob.download_as_text()
+
+
+class HTMLParser:
+    """Handles HTML parsing for extracting required details."""
+
+    @staticmethod
+    def parse_html(html_content):
+        """Parses the HTML file to extract relevant details."""
+        soup = BeautifulSoup(html_content, 'lxml')
+        table = soup.find('table')
+
+        if not table:
+            return None
+
+        rows = table.find_all('tr')
+        if len(rows) < 2:
+            return None
+
+        details = {
+            row.find_all('td')[0].text.strip(): row.find_all('td')[1].text.strip()
+            for row in rows[1:] if len(row.find_all('td')) >= 2
+        }
+
+        required_fields = {
+            'Component Name', 'Workload Type', 'Time of Execution',
+            'Environment', 'Region', 'App Namespace', 'App Name'
+        }
+        
+        if not required_fields.issubset(details):
+            return None
+
+        details['Pod Checkout Status'] = HTMLParser.search_status_plain_text(soup, "Pod Checkout Status=")
+        details['Log Checkout Status'] = HTMLParser.search_status_plain_text(soup, "Log Checkout Status=")
+        details['Environment'] = details.get('Environment', 'Unknown')
+        details['Region'] = details.get('Region', 'Unknown')
+        details['App Namespace'] = details.get('App Namespace', 'Unknown')
+        details['Time of Execution'] = details.get('Time of Execution', 'Unknown')
+        details['App Name'] = details.get('App Name', 'Unknown')
+
+        return details
+
+    @staticmethod
+    def search_status_plain_text(soup, status_label):
+        """Searches for status values in the HTML text."""
+        plain_text = soup.get_text(separator=" ")
+        lines = plain_text.split(status_label)
+
+        if len(lines) > 1:
+            return lines[1].split()[0].strip()
+        return "Unknown"
+
+
+class GCSApp:
+    """Flask application to handle API routes and GCS interactions."""
+
+    def __init__(self, bucket_name=BUCKET_NAME):
+        self.app = Flask(__name__)
+        self.gcs_manager = GCSManager(bucket_name)
+
+        # Define API routes
+        self.app.add_url_rule("/", view_func=self.home, methods=["GET"])
+        self.app.add_url_rule("/logcheckout", view_func=self.index, methods=["GET"])
+        self.app.add_url_rule("/dates/<region>", view_func=self.get_dates, methods=["GET"])
+        self.app.add_url_rule("/times/<region>/<date>", view_func=self.get_times, methods=["GET"])
+        self.app.add_url_rule("/results", view_func=self.results, methods=["GET"])  # Added results function
+        self.app.add_url_rule("/check_update", view_func=self.check_update, methods=["GET"])
+
+    def home(self):
+        """Renders the home page."""
+        return render_template('home.html')
+
+    def index(self):
+        """Renders the index page with available regions."""
+        regions = self.gcs_manager.list_regions()
+        return render_template('index.html', regions=regions)
+
+    def get_dates(self, region):
+        """Fetches available dates for a region."""
+        dates = self.gcs_manager.list_dates(region)
+        if dates is None:
+            return jsonify({"message": "No data available in selected region"})
+        return jsonify(dates)
+
+    def get_times(self, region, date):
+        """Fetches available times for a given region and date."""
+        times = self.gcs_manager.list_times(region, date)
+        return jsonify(times)
+
+    def check_update(self):
+        """Checks if there's a new update in the GCS bucket."""
+        region = request.args.get("region")
+        date = request.args.get("date")
+        last_checked = float(request.args.get("last_checked", 0))
+
+        latest_timestamp = self.gcs_manager.get_latest_blob_timestamp(region, date)
+        return jsonify({"updated": latest_timestamp > last_checked, "latest_timestamp": latest_timestamp})
+
+    def results(self):
+        """Fetches and parses the HTML from GCS, then returns JSON results."""
+        region = request.args.get("region")
+        date = request.args.get("date")
+        app_id = request.args.get("app_id")
+        filename = request.args.get("filename")
+
+        if not all([region, date, app_id, filename]):
+            return jsonify({"error": "Missing required parameters"}), 400
+
+        try:
+            html_content = self.gcs_manager.fetch_html_from_gcs(region, date, app_id, filename)
+            parsed_data = HTMLParser.parse_html(html_content)
+
+            if not parsed_data:
+                return jsonify({"message": "No valid data found in HTML"}), 204
+
+            return jsonify(parsed_data)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    def run(self):
+        """Runs the Flask application."""
+        port = int(os.environ.get("PORT", 8080))  # Default GCP Cloud Run port
+        self.app.run(host="0.0.0.0", port=port, debug=True)
+
+
+if __name__ == "__main__":
+    app = GCSApp()
+    app.run()
