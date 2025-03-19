@@ -4,6 +4,135 @@ import json
 import re
 import urllib3
 
+# Suppress SSL warnings
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# API Configuration
+API_URL = "https://server.server.abc.com/rest/api/1.0/projects/CND/repos"
+AUTH_TOKEN = "(Auth-token)"
+HEADERS = {
+    "Authorization": f"Bearer {AUTH_TOKEN}",
+    "Content-Type": "application/json"
+}
+
+# Condition Keywords
+SEARCH_TERMS = [
+    "requiredDuringSchedulingIgnoredDuringExecution",
+    "preferredDuringSchedulingIgnoredDuringExecution"
+]
+
+# Max concurrent tasks
+MAX_CONCURRENT_TASKS = 10  
+
+async def fetch(session, url):
+    """Fetch API response asynchronously with error handling."""
+    try:
+        async with session.get(url, headers=HEADERS, ssl=False, timeout=10) as response:
+            if response.status == 200:
+                return await response.json()
+            else:
+                print(f"⚠️ API Error {response.status}: {url}")
+                return None
+    except Exception as e:
+        print(f"❌ Request Failed: {url} - {e}")
+        return None
+
+async def check_yaml_conditions(session, project_name, file_path):
+    """Check if a YAML file contains the required conditions."""
+    file_url = f"{API_URL}/{project_name}/browse/{file_path}"
+    print(f"🔍 Checking YAML file: {file_url}")  # Debugging output
+
+    file_content = await fetch(session, file_url)
+
+    if file_content:
+        file_text = json.dumps(file_content)  # Convert to string
+        for term in SEARCH_TERMS:
+            if term in file_text:
+                print(f"✅ Condition found in: {file_url}")
+                return True
+    return False
+
+async def search_yaml_files(session, project_name, base_path):
+    """Recursively search for YAML files in the given path."""
+    folder_url = f"{API_URL}/{project_name}/browse/{base_path}"
+    print(f"📂 Fetching directory: {folder_url}")  # Debugging output
+
+    response = await fetch(session, folder_url)
+    
+    if not response:
+        print(f"🚫 No response for {folder_url}")
+        return
+
+    try:
+        items = []
+        if "values" in response:
+            items = response["values"]
+        else:
+            print(f"🛑 Unexpected JSON structure for {folder_url}, check manually.")
+            print(json.dumps(response, indent=2))  # Debugging: Print raw response
+            return
+
+        if not items:
+            print(f"🛑 No files or directories found in {folder_url}")
+            return
+
+    except json.JSONDecodeError:
+        print(f"⚠️ JSON Parsing Error at {folder_url}")
+        return
+
+    tasks = []
+    for item in items:
+        name = item.get("name")
+        item_type = item.get("type")
+        full_path = f"{base_path}/{name}"
+
+        if not name or not item_type:
+            continue  # Skip invalid entries
+
+        if item_type == "FILE" and re.search(r"\.ya?ml$", name, re.IGNORECASE):
+            print(f"📝 Found YAML: {full_path}")
+            tasks.append(check_yaml_conditions(session, project_name, full_path))
+        elif item_type == "DIRECTORY":
+            print(f"📁 Found folder: {full_path}, diving in...")
+            tasks.append(search_yaml_files(session, project_name, full_path))
+
+    await asyncio.gather(*tasks)
+
+async def process_project(project_name):
+    """Process a single project asynchronously."""
+    async with aiohttp.ClientSession() as session:
+        print(f"\n🔎 Searching in project: {project_name}")
+        await search_yaml_files(session, project_name, "k8s/envs/pr")
+
+async def main():
+    """Main function to run all projects in parallel with rate limiting."""
+    with open("repo.txt") as f:
+        projects = [line.strip() for line in f if line.strip()]
+
+    if not projects:
+        print("⚠️ No projects found in repo.txt")
+        return
+
+    # Limit concurrent tasks
+    sem = asyncio.Semaphore(MAX_CONCURRENT_TASKS)
+
+    async def limited_process(project):
+        async with sem:
+            await process_project(project)
+
+    await asyncio.gather(*(limited_process(proj) for proj in projects))
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
+
+.......................
+import asyncio
+import aiohttp
+import json
+import re
+import urllib3
+
 # Suppress InsecureRequestWarning from urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
