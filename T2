@@ -1,0 +1,109 @@
+import requests
+import yaml
+import re
+import csv
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# Configuration
+API_URL = "https://server.server.abc.com/rest/api/1.0/projects/CND/repos"
+AUTH_TOKEN = "your-auth-token"  # Replace with actual token
+HEADERS = {"Authorization": f"Bearer {AUTH_TOKEN}", "Content-Type": "application/json"}
+MAX_CONCURRENT_TASKS = 50  # Adjust as needed
+CSV_FILE = "output.csv"
+
+# Read project names from repo.txt
+with open("repo.txt", "r") as file:
+    projects = [line.strip() for line in file if line.strip()]
+
+# Define exact conditions for matching
+CONDITIONS = [r"\brequiredDuringSchedulingIgnoredDuringExecution\b", r"\bpreferredDuringSchedulingIgnoredDuringExecution\b"]
+
+# Function to fetch file content
+def fetch_file_content(project_name, file_path):
+    file_url = f"{API_URL}/{project_name}/browse/{file_path}"
+    try:
+        response = requests.get(file_url, headers=HEADERS, timeout=10)
+        response.raise_for_status()
+        return response.text  # Return file content
+    except requests.RequestException as e:
+        print(f"❌ Error fetching {file_url}: {e}")
+        return None
+
+# Function to check YAML conditions and extract app_id
+def check_yaml_conditions(project_name, file_path):
+    file_content = fetch_file_content(project_name, file_path)
+    if not file_content:
+        return None
+
+    # Check for exact match of conditions
+    if any(re.search(pattern, file_content) for pattern in CONDITIONS):
+        file_url = f"{API_URL}/{project_name}/browse/{file_path}"
+        print(f"✅ Condition found in: {file_url}")
+
+        # Extract app_id from YAML
+        app_id = extract_app_id(file_content)
+
+        # Write result to CSV
+        with open(CSV_FILE, "a", newline="") as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow([project_name, app_id, file_url])
+        
+        return True
+
+    return False
+
+# Function to extract app_id from YAML content
+def extract_app_id(file_content):
+    try:
+        yaml_data = yaml.safe_load(file_content)
+        if isinstance(yaml_data, dict):
+            return yaml_data.get("app_id", "N/A")
+    except yaml.YAMLError:
+        pass
+    return "N/A"
+
+# Function to fetch and search YAML files recursively
+def search_yaml_files(project_name, base_path):
+    folder_url = f"{API_URL}/{project_name}/browse/{base_path}"
+    
+    try:
+        response = requests.get(folder_url, headers=HEADERS, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+    except requests.RequestException as e:
+        print(f"❌ Error fetching directory {folder_url}: {e}")
+        return
+
+    items = data.get("children", {}).get("values", [])
+    
+    for item in items:
+        name = item.get("path", {}).get("name")
+        file_type = item.get("type")
+
+        if not name or not file_type:
+            continue
+
+        full_path = f"{base_path}/{name}"
+
+        if file_type == "FILE" and re.search(r"\.ya?ml$", name):
+            check_yaml_conditions(project_name, full_path)
+        elif file_type == "DIRECTORY":
+            search_yaml_files(project_name, full_path)
+
+# Function to process a single project
+def process_project(project_name):
+    print(f"🔍 Searching in project: {project_name}")
+    search_yaml_files(project_name, "k8s/envs/pr")
+
+# Run in parallel
+with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_TASKS) as executor:
+    futures = {executor.submit(process_project, project): project for project in projects}
+    
+    for future in as_completed(futures):
+        project = futures[future]
+        try:
+            future.result()  # Ensures each project completes
+        except Exception as e:
+            print(f"❌ Project {project} failed: {e}")
+
+print("✅ Scan complete. Results saved to output.csv")
