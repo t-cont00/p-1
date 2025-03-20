@@ -1,0 +1,106 @@
+import requests
+import concurrent.futures
+import queue
+import csv
+import re
+import yaml
+
+# API & Auth Details
+API_URL = "https://server.server.abc.com/rest/api/1.0/projects/CND/repos"
+AUTH_TOKEN = "your-auth-token"
+HEADERS = {"Authorization": f"Bearer {AUTH_TOKEN}", "Content-Type": "application/json"}
+
+# File Processing Configuration
+MAX_CONCURRENT_TASKS = 50  # Adjust based on system capacity
+LOG_QUEUE = queue.Queue()  # Thread-safe queue for logging
+
+# Exact condition match using regex
+EXACT_PATTERN = re.compile(r"\b(requiredDuringSchedulingIgnoredDuringExecution|preferredDuringSchedulingIgnoredDuringExecution)\b")
+
+# Logger function running in a separate thread
+def logger_thread():
+    with open("results.csv", "w", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow(["Project Name", "App ID", "File URL"])
+        while True:
+            try:
+                log_entry = LOG_QUEUE.get(timeout=10)  # Wait for entries
+                if log_entry == "STOP":
+                    break
+                writer.writerow(log_entry)
+            except queue.Empty:
+                continue  # No data, keep waiting
+
+# Function to check YAML conditions
+def check_yaml_conditions(project_name, file_path):
+    file_url = f"{API_URL}/{project_name}/browse/{file_path}"
+    
+    # Fetch file content
+    try:
+        response = requests.get(file_url, headers=HEADERS, timeout=10, verify=False)
+        response.raise_for_status()
+        file_content = response.text
+    except requests.RequestException as e:
+        print(f"❌ Error fetching {file_url}: {e}")
+        return
+
+    # Check for exact match condition
+    if not EXACT_PATTERN.search(file_content):
+        return
+
+    # Extract app_id using regex
+    app_id_match = re.search(r"\bapp_id:\s*(\S+)", file_content)
+    app_id = app_id_match.group(1) if app_id_match else "N/A"
+
+    print(f"✅ Condition found in: {file_url}")
+    LOG_QUEUE.put([project_name, app_id, file_url])  # Log to queue
+
+# Recursive function to search YAML files
+def search_yaml_files(project_name, base_path):
+    folder_url = f"{API_URL}/{project_name}/browse/{base_path}"
+
+    try:
+        response = requests.get(folder_url, headers=HEADERS, timeout=10, verify=False)
+        response.raise_for_status()
+        json_response = response.json()
+    except requests.RequestException as e:
+        print(f"❌ Error fetching directory {folder_url}: {e}")
+        return
+
+    if "children" not in json_response:
+        print(f"⚠ Unexpected JSON structure for {folder_url}, check manually.")
+        return
+
+    for item in json_response["children"]["values"]:
+        full_path = f"{base_path}/{item['path']['toString']}"
+        if item["type"] == "FILE" and full_path.endswith((".yaml", ".yml")):
+            check_yaml_conditions(project_name, full_path)
+        elif item["type"] == "DIRECTORY":
+            search_yaml_files(project_name, full_path)  # Recursive call
+
+# Main execution
+def main():
+    with open("repo.txt") as f:
+        projects = [line.strip() for line in f if line.strip()]
+
+    print(f"🚀 Starting scan for {len(projects)} projects...")
+
+    # Start logging thread
+    log_thread = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    log_thread.submit(logger_thread)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_CONCURRENT_TASKS) as executor:
+        futures = {executor.submit(search_yaml_files, project, "k8s/envs/pr"): project for project in projects}
+        for future in concurrent.futures.as_completed(futures):
+            project_name = futures[future]
+            try:
+                future.result()  # Catch any exceptions
+            except Exception as e:
+                print(f"❌ Error processing {project_name}: {e}")
+
+    LOG_QUEUE.put("STOP")  # Signal logger to stop
+    log_thread.shutdown(wait=True)  # Ensure logger finishes
+    print("✅ Scan complete.")
+
+if __name__ == "__main__":
+    main()
