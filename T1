@@ -1,0 +1,45 @@
+import re
+
+def check_yaml_conditions(file_content, file_url):
+    """Checks if the file contains an exact match for the required condition."""
+    
+    # Define exact strings to search for
+    patterns = [r"\brequiredDuringSchedulingIgnoredDuringExecution\b", r"\bpreferredDuringSchedulingIgnoredDuringExecution\b"]
+
+    # Check for exact match in the file content
+    if any(re.search(pattern, file_content) for pattern in patterns):
+        print(f"✅ Condition found in: {file_url}")
+        return True  # Match found
+    
+    return False  # No match
+
+
+import asyncio
+import random
+
+async def process_project(session, project_name):
+    """Process a single project, ensuring retries on failure."""
+    max_retries = 3  # Retry up to 3 times
+    delay = 2  # Initial retry delay in seconds
+
+    for attempt in range(max_retries):
+        try:
+            print(f"🔍 Searching in project: {project_name} (Attempt {attempt + 1})")
+            await search_yaml_files(session, project_name, "k8s/envs/pr")
+            print(f"✅ Completed scanning project: {project_name}")
+            return  # Exit loop on success
+        except Exception as e:
+            print(f"⚠️ Error in project {project_name}: {e} - Retrying in {delay} sec")
+            await asyncio.sleep(delay)
+            delay *= 2  # Exponential backoff
+
+    print(f"❌ Skipping project {project_name} after {max_retries} failed attempts")
+
+
+async def main():
+    """Ensures all projects are scanned correctly with retries."""
+    async with aiohttp.ClientSession() as session:
+        tasks = [process_project(session, project_name) for project_name in PROJECTS]
+        await asyncio.gather(*tasks)  # Ensures all projects run
+
+asyncio.run(main())
