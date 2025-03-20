@@ -142,8 +142,8 @@ import yaml
 # Constants
 CSV_FILE = "ORAPRODLDAP.csv"
 REPO_FILE = "repo.txt"
-API_URL = "https://cmestash.chicago.cme.com/rest/api/1.0/projects/CND/repos"
-AUTH_TOKEN = "BBDC-MjAzNTg5MDEjMjM401Jhsdil0Rt6q154P7eadkjmQM1E"
+API_URL = "https://server.cserver.ace.com/rest/api/1.0/projects/Cabc/repos"
+AUTH_TOKEN = "gfgf"
 HEADERS = {
     "Authorization": f"Bearer {AUTH_TOKEN}",
     "Content-Type": "application/json"
