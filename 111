@@ -1,65 +1,146 @@
-import requests
-import csv
+import asyncio
+import aiohttp
+import json
+import re
 import urllib3
+import csv
+import os
+import yaml
 
-# Suppress SSL warnings
+# Constants
+CSV_FILE = "ORAPRODLDAP.csv"
+REPO_FILE = "repo.txt"
+API_URL = "https://cmestash.chicago.cme.com/rest/api/1.0/projects/CND/repos"
+AUTH_TOKEN = "BBDC-MjAzNTg5MDEjMjM401Jhsdil0Rt6q154P7eadkjmQM1E"
+HEADERS = {
+    "Authorization": f"Bearer {AUTH_TOKEN}",
+    "Content-Type": "application/json"
+}
+SEARCH_TERMS = ["ORAPRODLDAP"]  # Modify if more terms are needed
+MAX_CONCURRENT_TASKS = 10
+
+# Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# API Configuration
-API_URL = "https://server.server.abc.com/rest/api/1.0/projects"
-AUTH_TOKEN = "(Auth-token)"
-HEADERS = {"Authorization": f"Bearer {AUTH_TOKEN}", "Content-Type": "application/json"}
+# Ensure CSV exists
+if not os.path.exists(CSV_FILE):
+    with open(CSV_FILE, mode="w", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow(["Project Name", "App ID", "File URL"])
 
-# Read project names from repo.txt
-def load_project_names():
-    with open("repo.txt", "r") as file:
-        return [line.strip() for line in file if line.strip()]
 
-# Fetch file content and check for required patterns
-def check_yaml_conditions(project_name, file_path):
-    file_url = f"{API_URL}/{project_name}/repos/CND/browse/{file_path}"
-    response = requests.get(file_url, headers=HEADERS, verify=False)
+async def fetch(session, url):
+    """Fetch API response asynchronously with error handling."""
+    try:
+        async with session.get(url, headers=HEADERS, ssl=False, timeout=10) as response:
+            if response.status == 200:
+                return await response.json()
+            else:
+                print(f"⚠️ API Error {response.status}: {url}")
+                return None
+    except Exception as e:
+        print(f"❌ Request Failed: {url} - {e}")
+        return None
 
-    if response.status_code == 200:
-        file_content = response.text
-        if "requiredDuringSchedulingIgnoredDuringExecution" in file_content or \
-           "preferredDuringSchedulingIgnoredDuringExecution" in file_content:
-            return True
+
+async def check_yaml_conditions(session, project_name, file_path):
+    """Check if a YAML file contains the required search term."""
+    file_url = f"{API_URL}/{project_name}/browse/{file_path}"
+    print(f"🔍 Checking YAML file: {file_url}")
+
+    file_content = await fetch(session, file_url)
+    if not file_content:
+        return False
+
+    # Convert JSON response to plain text
+    file_text = json.dumps(file_content)
+
+    # Use regex to match the search term as a whole word
+    search_term = SEARCH_TERMS[0]
+    pattern = rf"\b{re.escape(search_term)}\b"
+
+    if re.search(pattern, file_text, re.IGNORECASE):
+        print(f"✅ Condition found in: {file_url}")
+
+        # Extract app_id using regex
+        app_id_match = re.findall(r"app-(\d+)-.*", file_text)
+        app_id = app_id_match[0] if app_id_match else "N/A"
+
+        # Write results to CSV
+        with open(CSV_FILE, mode="a", newline="") as file:
+            writer = csv.writer(file)
+            writer.writerow([project_name, app_id, file_url])
+
+        return True
     return False
 
-# Recursively scan YAML files in CND repo
-def search_yaml_files(project_name, base_path, results):
-    repo_url = f"{API_URL}/{project_name}/repos/CND/browse/{base_path}"
-    response = requests.get(repo_url, headers=HEADERS, verify=False)
 
-    if response.status_code != 200:
+async def search_yaml_files(session, project_name, base_path):
+    """Recursively search for YAML files in the given path."""
+    folder_url = f"{API_URL}/{project_name}/browse/{base_path}"
+    print(f"📂 Fetching directory: {folder_url}")
+
+    response = await fetch(session, folder_url)
+    if not response:
         return
 
-    data = response.json()
-    items = [item["name"] for item in data.get("values", [])]
+    try:
+        # Extract items from JSON response
+        items = response.get("children", {}).get("values", [])
+        if not items:
+            print(f"⚠️ No files or directories found in {folder_url}")
+            return
+    except json.JSONDecodeError:
+        print(f"❌ JSON Parsing Error at {folder_url}")
+        return
 
+    tasks = []
     for item in items:
-        full_path = f"{base_path}/{item}"
-        if item.endswith((".yaml", ".yml")):
-            if check_yaml_conditions(project_name, full_path):
-                results.append((project_name, full_path))
-        else:
-            search_yaml_files(project_name, full_path, results)
+        name = item.get("path", {}).get("name")
+        item_type = item.get("type")
+        full_path = f"{base_path}/{name}"
 
-# Main execution
+        if not name or not item_type:
+            continue
+
+        if item_type == "FILE" and re.search(r"\.ya?ml$", name, re.IGNORECASE):
+            print(f"📄 Found YAML: {full_path}")
+            tasks.append(check_yaml_conditions(session, project_name, full_path))
+        elif item_type == "DIRECTORY":
+            print(f"📁 Found folder: {full_path}, searching inside...")
+            tasks.append(search_yaml_files(session, project_name, full_path))
+
+    await asyncio.gather(*tasks)
+
+
+async def process_project(project_name):
+    """Process a single project asynchronously."""
+    async with aiohttp.ClientSession() as session:
+        print(f"\n🔎 Searching in project: {project_name}")
+        await search_yaml_files(session, project_name, "k8s/envs/pr")
+
+
+async def main():
+    """Main function to run all projects in parallel with rate limiting."""
+    if not os.path.exists(REPO_FILE):
+        print(f"⚠️ File {REPO_FILE} not found.")
+        return
+
+    with open(REPO_FILE) as f:
+        projects = [line.strip() for line in f if line.strip()]
+
+    if not projects:
+        print("⚠️ No projects found in repo.txt")
+        return
+
+    sem = asyncio.Semaphore(MAX_CONCURRENT_TASKS)
+
+    async def limited_process(project):
+        async with sem:
+            await process_project(project)
+
+    await asyncio.gather(*(limited_process(proj) for proj in projects))
+
+
 if __name__ == "__main__":
-    projects = load_project_names()
-    results = []
-
-    for project in projects:
-        print(f"Scanning project: {project}")
-        search_yaml_files(project, "k8s/envs/pr", results)
-
-    # Export results to CSV
-    csv_file = "scan_results.csv"
-    with open(csv_file, mode="w", newline="") as file:
-        writer = csv.writer(file)
-        writer.writerow(["Project Name", "File Path"])
-        writer.writerows(results)
-
-    print(f"Scan complete. Results saved in {csv_file}.")
+    asyncio.run(main())
