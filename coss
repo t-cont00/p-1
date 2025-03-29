@@ -1,3 +1,71 @@
+from flask import Flask, jsonify
+from flask_cors import CORS
+import os
+
+app = Flask(__name__)
+CORS(app, origins=["http://localhost:3000"])  # Allow requests from React frontend
+
+@app.route("/api/data", methods=["GET"])
+def get_data():
+    return jsonify({"message": "Hello from Flask API!", "status": "success"})
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000, debug=True)
+
+
+flask==3.0.0
+flask-cors==4.0.0
+python-dotenv==1.0.0
+
+
+yarn add axios
+
+
+import React, { useState, useEffect } from "react";
+import DataDisplay from "./components/DataDisplay";
+import axios from "axios";
+
+function App() {
+  const [data, setData] = useState(null);
+
+  useEffect(() => {
+    axios.get("http://localhost:5000/api/data")
+      .then(response => {
+        setData(response.data);
+      })
+      .catch(error => {
+        console.error("Error fetching data:", error);
+      });
+  }, []);
+
+  return (
+    <div>
+      <h1>React + Flask Integration</h1>
+      {data ? <DataDisplay data={data} /> : <p>Loading...</p>}
+    </div>
+  );
+}
+
+export default App;
+
+
+import React from "react";
+
+const DataDisplay = ({ data }) => {
+  return (
+    <div>
+      <h2>Backend Response:</h2>
+      <p>{data.message}</p>
+      <p>Status: {data.status}</p>
+    </div>
+  );
+};
+
+export default DataDisplay;
+
+
+########################################################################################################
+
 from flask import Flask, render_template, jsonify
 from flask_cors import CORS
 
