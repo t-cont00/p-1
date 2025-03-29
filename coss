@@ -1,0 +1,80 @@
+from flask import Flask, jsonify
+from flask_cors import CORS
+
+app = Flask(__name__)
+CORS(app)  # Enable CORS for all frontend requests
+
+@app.route('/api/data', methods=['GET'])
+def get_data():
+    return jsonify({"message": "Hello from Flask API!"})
+
+if __name__ == '__main__':
+    app.run(host="0.0.0.0", port=5000, debug=True)  # Expose Flask on all networks
+
+
+
+import React, { useState } from "react";
+import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom";
+import axios from "axios";
+
+const Home = () => {
+  const [message, setMessage] = useState("");
+
+  const fetchData = async () => {
+    try {
+      const response = await axios.get("http://localhost:5000/api/data");
+      setMessage(response.data.message);
+    } catch (error) {
+      console.error("CORS error:", error);
+      setMessage("Failed to fetch API data.");
+    }
+  };
+
+  return (
+    <div style={{ textAlign: "center", marginTop: "50px" }}>
+      <h1>Home Page</h1>
+      <button onClick={fetchData}>Fetch API Data</button>
+      <p>{message}</p>
+      <br />
+      <Link to="/page1"><button>Go to Page 1</button></Link>
+      <Link to="/page2"><button>Go to Page 2</button></Link>
+    </div>
+  );
+};
+
+const Page1 = () => (
+  <div style={{ textAlign: "center", marginTop: "50px" }}>
+    <h1>Page 1</h1>
+    <Link to="/"><button>Go to Home</button></Link>
+    <Link to="/page2"><button>Go to Page 2</button></Link>
+  </div>
+);
+
+const Page2 = () => (
+  <div style={{ textAlign: "center", marginTop: "50px" }}>
+    <h1>Page 2</h1>
+    <Link to="/"><button>Go to Home</button></Link>
+    <Link to="/page1"><button>Go to Page 1</button></Link>
+  </div>
+);
+
+export default function App() {
+  return (
+    <Router>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/page1" element={<Page1 />} />
+        <Route path="/page2" element={<Page2 />} />
+      </Routes>
+    </Router>
+  );
+}
+
+
+
+pip install flask flask-cors
+
+
+npx create-react-app my-app
+cd my-app
+npm install axios react-router-dom
