@@ -1,3 +1,96 @@
+from flask import Flask, render_template, jsonify
+from flask_cors import CORS
+
+app = Flask(__name__, template_folder="templates", static_folder="static")
+CORS(app)  # Enable CORS to avoid cross-origin issues
+
+@app.route("/")
+def home():
+    return render_template("index.html")
+
+@app.route("/page1")
+def page1():
+    return render_template("page1.html")
+
+@app.route("/page2")
+def page2():
+    return render_template("page2.html")
+
+@app.route("/api/data")
+def get_data():
+    return jsonify({"message": "Hello from Flask API!"})
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000, debug=True)
+
+
+index
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home</title>
+    <script defer src="{{ url_for('static', filename='script.js') }}"></script>
+</head>
+<body>
+    <h1>Home Page</h1>
+    <button onclick="fetchData()">Fetch API Data</button>
+    <p id="apiResponse"></p>
+    
+    <br>
+    <a href="{{ url_for('page1') }}"><button>Go to Page 1</button></a>
+    <a href="{{ url_for('page2') }}"><button>Go to Page 2</button></a>
+</body>
+</html>
+
+p1
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Page 1</title>
+</head>
+<body>
+    <h1>Page 1</h1>
+    <a href="{{ url_for('home') }}"><button>Go to Home</button></a>
+    <a href="{{ url_for('page2') }}"><button>Go to Page 2</button></a>
+</body>
+</html>
+
+p2
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Page 2</title>
+</head>
+<body>
+    <h1>Page 2</h1>
+    <a href="{{ url_for('home') }}"><button>Go to Home</button></a>
+    <a href="{{ url_for('page1') }}"><button>Go to Page 1</button></a>
+</body>
+</html>
+
+static sc
+function fetchData() {
+    fetch("/api/data")
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById("apiResponse").innerText = data.message;
+        })
+        .catch(error => {
+            console.error("Error fetching data:", error);
+            document.getElementById("apiResponse").innerText = "Failed to fetch API data.";
+        });
+}
+
+
+
+###########################
+
 from flask import Flask, jsonify
 from flask_cors import CORS
 
