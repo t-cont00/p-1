@@ -15,6 +15,367 @@ const TypingIndicator = ({ darkMode }) => (
       width: 'fit-content',
     }}
   >
+    <div
+      className={`typing-dot ${darkMode ? 'dark' : ''}`}
+      style={{
+        width: '8px',
+        height: '8px',
+        borderRadius: '50%',
+        backgroundColor: darkMode ? '#cbd5e0' : '#a0aec0',
+        animation: 'typing-dot 1s infinite ease-in-out',
+        animationDelay: '0ms'
+      }}
+    />
+    <div
+      className={`typing-dot ${darkMode ? 'dark' : ''}`}
+      style={{
+        width: '8px',
+        height: '8px',
+        borderRadius: '50%',
+        backgroundColor: darkMode ? '#cbd5e0' : '#a0aec0',
+        animation: 'typing-dot 1s infinite ease-in-out',
+        animationDelay: '150ms'
+      }}
+    />
+    <div
+      className={`typing-dot ${darkMode ? 'dark' : ''}`}
+      style={{
+        width: '8px',
+        height: '8px',
+        borderRadius: '50%',
+        backgroundColor: darkMode ? '#cbd5e0' : '#a0aec0',
+        animation: 'typing-dot 1s infinite ease-in-out',
+        animationDelay: '300ms'
+      }}
+    />
+  </div>
+);
+
+const MessageBubble = ({ message, darkMode }) => {
+  const renderMarkdown = (text) => {
+    // Handle links
+    text = text.replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="markdown-link">$1</a>');
+
+    // Handle lists
+    text = text.replace(/^\s*-\s(.*$)/gm, '<li class="markdown-li">$1</li>');
+    text = text.replace(/^\s*\*\s(.*$)/gm, '<li class="markdown-li">$1</li>');
+    text = text.replace(/<li.*?>/g, '<ul class="markdown-ul">$&');
+    text = text.replace(/<\/li>/g, '</li></ul>');
+
+    // Existing replacements
+    text = text
+      .replace(/^# (.*$)/gm, `<h2 class="markdown-h2 ${darkMode ? 'dark' : ''}">$1</h2>`)
+      .replace(/^## (.*$)/gm, `<h3 class="markdown-h3 ${darkMode ? 'dark' : ''}">$1</h3>`)
+      .replace(/^### (.*$)/gm, `<h4 class="markdown-h4 ${darkMode ? 'dark' : ''}">$1</h4>`)
+      .replace(/\*\*(.*?)\*\*/g, `<strong class="markdown-strong ${darkMode ? 'dark' : ''}">$1</strong>`)
+      .replace(/\*(.*?)\*/g, `<em class="markdown-em">$1</em>`)
+      .replace(/`(.*?)`/g, `<code class="markdown-code ${darkMode ? 'dark' : ''}">$1</code>`)
+      .replace(/\n/g, '<br class="markdown-br" />');
+
+    return text;
+  };
+
+  return (
+    <div className={`message-container ${message.sender === 'user' ? 'user' : 'bot'}`}>
+      <div
+        className={`message-bubble ${message.sender === 'user' ? 'user' : 'bot'} ${darkMode ? 'dark' : ''}`}
+        dangerouslySetInnerHTML={{ __html: renderMarkdown(message.text) }}
+        style={{
+          padding: '12px 15px',
+          borderRadius: '8px',
+          maxWidth: '60%',
+          fontSize: '14px',
+          opacity: 0,
+          transform: 'translateY(10px)',
+          animation: 'fadeIn 0.3s ease-out forwards',
+          backgroundColor: message.sender === 'user'
+            ? (darkMode ? '#2b6cb0' : '#007bff')
+            : (darkMode ? '#2d3748' : '#ecf0f1'),
+          color: message.sender === 'user' ? 'white' : (darkMode ? 'white' : 'black')
+        }}
+      />
+    </div>
+  );
+};
+
+export default function Chatbot() {
+  const [messages, setMessages] = useState([
+    {
+      sender: 'bot',
+      text: "Hello! I'm your abc knowledge assistant. How can I help you today?\n\nYou can ask me things like:\n- **How to install softwarex**\n- **Softwarex configuration**\n- **Solution for SoftwareX configuration issues**",
+    },
+  ]);
+  const [input, setInput] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+  const [darkMode, setDarkMode] = useState(false);
+  const messagesEndRef = useRef(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    setDarkMode(mediaQuery.matches);
+
+    const handler = (e) => setDarkMode(e.matches);
+    mediaQuery.addEventListener('change', handler);
+
+    return () => mediaQuery.removeEventListener('change', handler);
+  }, []);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!input.trim()) return;
+
+    const userMessage = { sender: 'user', text: input };
+    setMessages((prev) => [...prev, userMessage]);
+    setInput('');
+    setIsTyping(true);
+
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: input }),
+      });
+
+      if (!response.ok) throw new Error('Network response was not ok');
+
+      const data = await response.json();
+      const botMessage = { sender: 'bot', text: data.response };
+      setMessages((prev) => [...prev, botMessage]);
+    } catch (error) {
+      const errorMessage = {
+        sender: 'bot',
+        text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setIsTyping(false);
+    }
+  };
+
+  return (
+    <div
+      className="app-container"
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        width: '100vw',
+        height: '100vh',
+        backgroundColor: darkMode ? '#121212' : '#f8f9fa',
+        overflow: 'hidden',
+        margin: 0,
+        padding: 0
+      }}
+    >
+      {/* Header */}
+      <header
+        className="app-header"
+        style={{
+          width: '100%',
+          backgroundColor: darkMode ? '#1a202c' : '#2c3e50',
+          color: 'white',
+          padding: '15px 20px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '10px'
+        }}
+      >
+        <div className="header-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+          <div className="header-icon-container" style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+            <div
+              className="header-icon"
+              style={{
+                width: '40px',
+                height: '40px',
+                borderRadius: '50%',
+                backgroundColor: '#3498db',
+                color: 'white',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontWeight: 'bold',
+                fontSize: '18px'
+              }}
+            >
+              xyz
+            </div>
+            <div>
+              <h1 className="header-title" style={{ margin: 0, fontSize: '1.2rem', fontWeight: '600' }}>abc Knowledge Assistant</h1>
+              <p className="header-subtitle" style={{ margin: 0, fontSize: '0.8rem', opacity: darkMode ? 0.7 : 0.8 }}>Powered by Gemini AI</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setDarkMode((prev) => !prev)}
+            className="dark-mode-toggle"
+            aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'white',
+              fontSize: '20px',
+              cursor: 'pointer'
+            }}
+          >
+            {darkMode ? '🌙' : '☀️'}
+          </button>
+        </div>
+      </header>
+
+      {/* Chat container */}
+      <div
+        className="chat-container"
+        style={{
+          width: '100%',
+          maxWidth: '800px',
+          height: '70vh',
+          backgroundColor: darkMode ? '#1e1e1e' : 'white',
+          borderRadius: '10px',
+          padding: '20px',
+          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '10px'
+        }}
+      >
+        {messages.map((message, index) => (
+          <div
+            key={index}
+            className={`message-container ${message.sender === 'user' ? 'user' : 'bot'}`}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: message.sender === 'user' ? 'flex-end' : 'flex-start'
+            }}
+          >
+            <MessageBubble message={message} darkMode={darkMode} />
+          </div>
+        ))}
+        {isTyping && (
+          <div className="typing-container" style={{ display: 'flex', justifyContent: 'flex-start' }}>
+            <TypingIndicator darkMode={darkMode} />
+          </div>
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Input area */}
+      <form
+        onSubmit={handleSubmit}
+        className="input-form"
+        style={{
+          width: '100%',
+          maxWidth: '800px',
+          padding: '10px',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          background: darkMode ? '#2d3748' : 'white',
+          borderRadius: '10px',
+          marginTop: 'auto',
+          marginBottom: '10px'
+        }}
+      >
+        <div className="input-container" style={{ display: 'flex', width: '100%' }}>
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Ask about xyz processes, guides, or solutions..."
+            className="input-field"
+            style={{
+              flex: 1,
+              padding: '12px 15px',
+              border: `1px solid ${darkMode ? '#4a5568' : '#e2e8f0'}`,
+              borderRadius: '8px',
+              fontSize: '16px',
+              transition: 'all 0.2s ease',
+              backgroundColor: darkMode ? '#2d3748' : 'white',
+              color: darkMode ? 'white' : 'black',
+              outline: 'none'
+            }}
+            disabled={isTyping}
+          />
+          <button
+            type="submit"
+            disabled={!input.trim() || isTyping}
+            className="submit-button"
+            style={{
+              background: darkMode ? '#4299e1' : '#3182ce',
+              color: 'white',
+              border: 'none',
+              padding: '0 20px',
+              marginLeft: '10px',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minWidth: '50px',
+              opacity: (!input.trim() || isTyping) ? 0.5 : 1,
+              cursor: (!input.trim() || isTyping) ? 'not-allowed' : 'pointer'
+            }}
+          >
+            {isTyping ? '...' : '🚀'}
+          </button>
+        </div>
+        <p
+          className="input-desc"
+          style={{
+            margin: '8px 0 0',
+            fontSize: '0.8rem',
+            color: darkMode ? '#a0aec0' : '#6c757d',
+            textAlign: 'center'
+          }}
+        >
+          Ask about installations, troubleshooting, or IT procedures
+        </p>
+      </form>
+      <style jsx global>{`
+  body {
+    margin: 0;
+    padding: 0;
+    background-color: ${darkMode ? '#121212' : '#f8f9fa'};
+  }
+`}</style>
+    </div>
+  );
+}
+
+
+
+
+
+
+----------------------------------------------
+
+
+
+
+
+'use client';
+
+import { useState, useRef, useEffect } from 'react';
+
+const TypingIndicator = ({ darkMode }) => (
+  <div
+    className="typing-indicator"
+    style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: '0.25rem',
+      padding: '0.5rem 1rem',
+      borderRadius: '0.5rem',
+      backgroundColor: darkMode ? '#4a5568' : '#f7fafc',
+      width: 'fit-content',
+    }}
+  >
     <div className={`typing-dot ${darkMode ? 'dark' : ''}`} style={{ animationDelay: '0ms' }} />
     <div className={`typing-dot ${darkMode ? 'dark' : ''}`} style={{ animationDelay: '150ms' }} />
     <div className={`typing-dot ${darkMode ? 'dark' : ''}`} style={{ animationDelay: '300ms' }} />
