@@ -1,3 +1,116 @@
+<style jsx global>{`
+  .log-table-container {
+    width: 100%;
+    overflow-x: auto;
+    margin: 10px 0;
+    font-family: 'Roboto Mono', monospace;
+  }
+
+  .log-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8em;
+    table-layout: fixed;
+  }
+
+  .log-table th {
+    background-color: #f0f0f0;
+    padding: 8px 12px;
+    text-align: left;
+    position: sticky;
+    top: 0;
+    white-space: nowrap;
+  }
+
+  .log-table.dark th {
+    background-color: #2d3748;
+    color: white;
+  }
+
+  .log-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid #e2e8f0;
+    vertical-align: top;
+    word-break: break-word;
+  }
+
+  .log-table.dark td {
+    border-bottom: 1px solid #4a5568;
+  }
+
+  .log-table th:nth-child(1) { width: 15%; }
+  .log-table th:nth-child(2) { width: 10%; }
+  .log-table th:nth-child(3) { width: 10%; }
+  .log-table th:nth-child(4) { width: 10%; }
+  .log-table th:nth-child(5) { width: 15%; }
+  .log-table th:nth-child(6) { width: 40%; }
+
+  .log-details {
+    margin-top: 15px;
+    padding: 10px;
+    background-color: #f8f9fa;
+    border-radius: 4px;
+    font-size: 0.8em;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+
+  .log-details.dark {
+    background-color: #2d3748;
+    color: #e2e8f0;
+  }
+
+  .log-details pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+
+  .severity-normal {
+    color: #3182ce;
+  }
+
+  .severity-warning {
+    color: #dd6b20;
+  }
+
+  .severity-error {
+    color: #e53e3e;
+    font-weight: bold;
+  }
+
+  .severity-info {
+    color: #38a169;
+  }
+
+  .severity-default {
+    color: inherit;
+  }
+
+  @media (max-width: 768px) {
+    .log-table th:nth-child(1) { width: 20%; }
+    .log-table th:nth-child(2) { width: 15%; }
+    .log-table th:nth-child(3) { display: none; }
+    .log-table th:nth-child(4) { display: none; }
+    .log-table th:nth-child(5) { display: none; }
+    .log-table th:nth-child(6) { width: 65%; }
+
+    .log-table td:nth-child(3),
+    .log-table td:nth-child(4),
+    .log-table td:nth-child(5) {
+      display: none;
+    }
+  }
+`}</style>
+
+
+
+
+
+----------------------
+
+
+
 
 @keyframes typing-dot {
   0% { transform: translateY(0); }
