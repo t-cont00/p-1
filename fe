@@ -28,9 +28,9 @@ const MessageBubble = ({ message, darkMode }) => {
       .replace(/^## (.*$)/gm, `<h3 class="markdown-h3 ${darkMode ? 'dark' : ''}">$1</h3>`)
       .replace(/^### (.*$)/gm, `<h4 class="markdown-h4 ${darkMode ? 'dark' : ''}">$1</h4>`)
       .replace(/\*\*(.*?)\*\*/g, `<strong class="markdown-strong ${darkMode ? 'dark' : ''}">$1</strong>`)
-      .replace(/\*(.*?)\*/g, '<em class="markdown-em">$1</em>')
+      .replace(/\*(.*?)\*/g, `<em class="markdown-em">$1</em>`)
       .replace(/`(.*?)`/g, `<code class="markdown-code ${darkMode ? 'dark' : ''}">$1</code>`)
-      .replace(/\n/g, '<br />');
+      .replace(/\n/g, '<br class="markdown-br" />');
   };
 
   return (
@@ -47,10 +47,9 @@ export default function Chatbot() {
   const [messages, setMessages] = useState([
     {
       sender: 'bot',
-      text: "Hello! I'm your ABC knowledge assistant. How can I help you today?\n\nYou can ask me things like:\n- **How to install SoftwareX**\n- **SoftwareX configuration**\n- **Solution for SoftwareX configuration issues**",
+      text: "Hello! I'm your abc knowledge assistant. How can I help you today?\n\nYou can ask me things like:\n- **How to install softwarex**\n- **Softwarex configuration**\n- **Solution for SoftwareX configuration issues**",
     },
   ]);
-
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
@@ -63,8 +62,10 @@ export default function Chatbot() {
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     setDarkMode(mediaQuery.matches);
+
     const handler = (e) => setDarkMode(e.matches);
     mediaQuery.addEventListener('change', handler);
+
     return () => mediaQuery.removeEventListener('change', handler);
   }, []);
 
@@ -90,10 +91,11 @@ export default function Chatbot() {
       const botMessage = { sender: 'bot', text: data.response };
       setMessages((prev) => [...prev, botMessage]);
     } catch (error) {
-      setMessages((prev) => [
-        ...prev,
-        { sender: 'bot', text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}` },
-      ]);
+      const errorMessage = {
+        sender: 'bot',
+        text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      };
+      setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setIsTyping(false);
     }
@@ -107,28 +109,16 @@ export default function Chatbot() {
           <div className="header-icon-container">
             <div className="header-icon">xyz</div>
             <div>
-              <h1 className="header-title">ABC Knowledge Assistant</h1>
+              <h1 className="header-title">abc Knowledge Assistant</h1>
               <p className={`header-subtitle ${darkMode ? 'dark' : ''}`}>Powered by Gemini AI</p>
             </div>
           </div>
           <button
-            onClick={() => setDarkMode(!darkMode)}
+            onClick={() => setDarkMode((prev) => !prev)}
             className={`dark-mode-toggle ${darkMode ? 'dark' : ''}`}
             aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
           >
-            {darkMode ? (
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                <path d="M17.293 13.293 8 0 6.707 2.707 8 10.586 10.586 10.586z" />
-              </svg>
-            ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                <path
-                  fillRule="evenodd"
-                  d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.951l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0z"
-                  clipRule="evenodd"
-                />
-              </svg>
-            )}
+            {darkMode ? '🌙' : '☀️'}
           </button>
         </div>
       </header>
@@ -138,13 +128,11 @@ export default function Chatbot() {
         {messages.map((message, index) => (
           <MessageBubble key={index} message={message} darkMode={darkMode} />
         ))}
-
         {isTyping && (
           <div className="typing-container">
             <TypingIndicator darkMode={darkMode} />
           </div>
         )}
-
         <div ref={messagesEndRef} />
       </div>
 
@@ -155,13 +143,15 @@ export default function Chatbot() {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask about XYZ processes, guides, or solutions..."
+            placeholder="Ask about xyz processes, guides, or solutions..."
+            style={{ width: '700px' }}
             className={`input-field ${darkMode ? 'dark' : ''}`}
           />
           <button type="submit" disabled={!input.trim() || isTyping} className="submit-button">
-            Send
+            🚀
           </button>
         </div>
+        <p className={`input-desc ${darkMode ? 'dark' : ''}`}>Ask about installations, troubleshooting, or IT procedures</p>
       </form>
     </div>
   );
