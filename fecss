@@ -1,3 +1,64 @@
+// Update the chat container style in your main component:
+<div 
+  className="chat-container" 
+  style={{
+    width: '100%',
+    maxWidth: '800px',
+    height: '70vh',
+    backgroundColor: darkMode ? '#121212' : '#f8f9fa', // Match side background
+    borderRadius: '10px',
+    padding: '20px',
+    overflowY: 'auto',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px',
+    border: darkMode ? '1px solid #2d3748' : '1px solid #e2e8f0'
+  }}
+>
+
+// Update the input form style:
+<form 
+  onSubmit={handleSubmit} 
+  className="input-form" 
+  style={{
+    width: '100%',
+    maxWidth: '800px',
+    padding: '15px 20px',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    background: darkMode ? 'rgba(45, 55, 72, 0.8)' : 'rgba(255, 255, 255, 0.8)',
+    borderRadius: '12px',
+    marginTop: 'auto',
+    marginBottom: '10px',
+    backdropFilter: 'blur(8px)',
+    WebkitBackdropFilter: 'blur(8px)',
+    boxShadow: darkMode 
+      ? '0 4px 30px rgba(0, 0, 0, 0.3)' 
+      : '0 4px 30px rgba(0, 0, 0, 0.1)',
+    border: darkMode ? '1px solid rgba(74, 85, 104, 0.3)' : '1px solid rgba(0, 0, 0, 0.1)'
+  }}
+>
+
+// Add these global styles for the blur effect (needs to be in a style tag):
+<style jsx global>{`
+  /* This is needed for backdrop-filter to work properly */
+  body {
+    margin: 0;
+    padding: 0;
+    background-color: ${darkMode ? '#121212' : '#f8f9fa'};
+  }
+  
+  /* Fix for Firefox blur support */
+  @supports not (backdrop-filter: blur(8px)) {
+    .input-form {
+      background: ${darkMode ? '#2d3748' : 'white'} !important;
+    }
+  }
+`}</style>
+
+
 <style jsx global>{`
   .log-table-container {
     width: 100%;
