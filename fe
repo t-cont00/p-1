@@ -1,3 +1,109 @@
+import ReactJson from 'react-json-view';
+import { useState } from 'react';
+
+const MessageBubble = ({ message, darkMode }) => {
+  const [expanded, setExpanded] = useState(true);
+
+  const tryParseJSON = (text) => {
+    // First try parsing as pure JSON
+    try {
+      return JSON.parse(text);
+    } catch (e) {
+      // If that fails, try extracting JSON from log format
+      const jsonMatch = text.match(/\{.*\}/s);
+      if (jsonMatch) {
+        try {
+          // Clean common JSON issues in logs
+          const cleaned = jsonMatch[0]
+            .replace(/'/g, '"')
+            .replace(/(\w+):/g, '"$1":')
+            .replace(/:\s*([a-zA-Z][a-zA-Z0-9]*)([,\}])/g, ':"$1"$2')
+            .replace(/,(\s*[}\]])/g, '$1');
+          return JSON.parse(cleaned);
+        } catch (e) {
+          return null;
+        }
+      }
+      return null;
+    }
+  };
+
+  const renderContent = () => {
+    const jsonData = tryParseJSON(message.text);
+    
+    if (jsonData) {
+      return (
+        <div className={`json-container ${darkMode ? 'dark' : ''}`}>
+          <button 
+            onClick={() => setExpanded(!expanded)}
+            className={`toggle-json-btn ${darkMode ? 'dark' : ''}`}
+          >
+            {expanded ? '▼ Collapse' : '► Expand'} JSON
+          </button>
+          <ReactJson
+            src={jsonData}
+            theme={darkMode ? 'ocean' : 'rjv-default'}
+            collapsed={!expanded}
+            displayDataTypes={false}
+            displayObjectSize={false}
+            enableClipboard={true}
+            style={{
+              backgroundColor: 'transparent',
+              padding: '8px',
+              borderRadius: '4px',
+              marginTop: '8px'
+            }}
+          />
+        </div>
+      );
+    }
+
+    // Fallback to markdown rendering
+    return (
+      <div dangerouslySetInnerHTML={{ __html: renderMarkdown(message.text) }} />
+    );
+  };
+
+  const renderMarkdown = (text) => {
+    // Your existing markdown rendering
+    return text
+      .replace(/^# (.*$)/gm, `<h2 class="markdown-h2 ${darkMode ? 'dark' : ''}">$1</h2>`)
+      .replace(/^## (.*$)/gm, `<h3 class="markdown-h3 ${darkMode ? 'dark' : ''}">$1</h3>`)
+      .replace(/^### (.*$)/gm, `<h4 class="markdown-h4 ${darkMode ? 'dark' : ''}">$1</h4>`)
+      .replace(/\*\*(.*?)\*\*/g, `<strong class="markdown-strong ${darkMode ? 'dark' : ''}">$1</strong>`)
+      .replace(/\*(.*?)\*/g, `<em class="markdown-em">$1</em>`)
+      .replace(/`(.*?)`/g, `<code class="markdown-code ${darkMode ? 'dark' : ''}">$1</code>`)
+      .replace(/\n/g, '<br class="markdown-br" />');
+  };
+
+  return (
+    <div className={`message-container ${message.sender === 'user' ? 'user' : 'bot'}`}>
+      <div
+        className={`message-bubble ${message.sender === 'user' ? 'user' : 'bot'} ${darkMode ? 'dark' : ''}`}
+        style={{
+          padding: '12px 15px',
+          borderRadius: '8px',
+          maxWidth: '100%',
+          fontSize: '14px',
+          backgroundColor: message.sender === 'user' 
+            ? (darkMode ? '#2b6cb0' : '#007bff') 
+            : (darkMode ? '#2d3748' : '#ecf0f1'),
+          color: message.sender === 'user' ? 'white' : (darkMode ? 'white' : 'black'),
+          overflowX: 'auto'
+        }}
+      >
+        {renderContent()}
+      </div>
+    </div>
+  );
+};
+
+
+
+
+
+
+
 import ReactJsonToTable from 'react-json-to-table';
 
 const MessageBubble = ({ message, darkMode }) => {
