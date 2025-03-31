@@ -1,194 +1,281 @@
+import { useState } from 'react';
+
 const LogViewer = ({ logData, darkMode }) => {
   const [expandedLogs, setExpandedLogs] = useState({});
 
-  const toggleExpand = (timestamp) => {
+  const toggleExpand = (logId) => {
     setExpandedLogs(prev => ({
       ...prev,
-      [timestamp]: !prev[timestamp]
+      [logId]: !prev[logId]
     }));
   };
 
-  // Function to extract and structure log data
-  const processLogs = (rawLogs) => {
-    if (!rawLogs) return [];
-    
+  // Process logs into a structured format
+  const processLogs = (rawData) => {
+    if (!rawData) return [];
+
     try {
-      // If it's already an object (parsed JSON), use as is
-      if (typeof rawLogs === 'object' && !Array.isArray(rawLogs)) {
-        return [extractLogFields(rawLogs)];
+      // Handle case where rawData is already a parsed log object
+      if (typeof rawData === 'object' && !Array.isArray(rawData)) {
+        return [extractLogFields(rawData)];
       }
-      
-      // If it's an array, process each item
-      if (Array.isArray(rawLogs)) {
-        return rawLogs.map(log => extractLogFields(log));
+
+      // Handle array of logs
+      if (Array.isArray(rawData)) {
+        return rawData.map(log => extractLogFields(log));
       }
-      
-      // If it's a string, try to parse it
-      if (typeof rawLogs === 'string') {
+
+      // Handle string input (try to parse as JSON)
+      if (typeof rawData === 'string') {
         try {
-          const parsed = JSON.parse(rawLogs);
+          const parsed = JSON.parse(rawData);
           return processLogs(parsed);
         } catch (e) {
-          // If not JSON, try to extract fields from string
-          return [extractLogFieldsFromString(rawLogs)];
+          // If not JSON, try to parse as raw log string
+          return [parseRawLogString(rawData)];
         }
       }
-      
+
       return [];
     } catch (e) {
       console.error('Error processing logs:', e);
       return [{
+        id: 'error',
         timestamp: 'Error',
         severity: 'ERROR',
-        message: 'Failed to process log',
-        raw: rawLogs
+        message: 'Failed to process log data',
+        raw: rawData
       }];
     }
   };
 
   // Extract fields from a structured log object
   const extractLogFields = (log) => {
+    // Try different possible field locations for common log attributes
+    const timestamp = log.timestamp || 
+                     log.time || 
+                     log.metadata?.creationTimestamp || 
+                     log.lastTimestamp || 
+                     log.receiveTimestamp || 
+                     'Unknown';
+
+    const severity = log.severity || 
+                    log.level || 
+                    log.logLevel || 
+                    (log.jsonPayload ? log.jsonPayload.level : null) || 
+                    'INFO';
+
+    const message = log.message || 
+                   log.reason || 
+                   (log.jsonPayload ? log.jsonPayload.message : null) || 
+                   JSON.stringify(log);
+
+    const source = log.source || 
+                  log.reportingComponent || 
+                  (log.protoPayload ? log.protoPayload.serviceName : null) || 
+                  'Unknown';
+
+    const service = log.service || 
+                   log.resource?.labels?.service_name || 
+                   'Unknown';
+
     return {
-      timestamp: log.timestamp || log.metadata?.creationTimestamp || log.lastTimestamp || 'Unknown',
-      severity: log.severity || log.level || 'INFO',
-      message: log.message || log.reason || JSON.stringify(log),
-      source: log.source?.component || log.reportingComponent || 'Unknown',
-      namespace: log.involvedObject?.namespace || log.metadata?.namespace || 'Unknown',
+      id: `${timestamp}-${Math.random().toString(36).substr(2, 9)}`,
+      timestamp,
+      severity,
+      message: message.length > 100 ? `${message.substring(0, 100)}...` : message,
+      source,
+      service,
       raw: log
     };
   };
 
-  // Try to extract fields from a raw log string
-  const extractLogFieldsFromString = (logString) => {
-    try {
-      // Try to find JSON part in the string
-      const jsonStart = logString.indexOf('{');
-      const jsonEnd = logString.lastIndexOf('}') + 1;
-      if (jsonStart >= 0 && jsonEnd > jsonStart) {
-        const jsonPart = logString.slice(jsonStart, jsonEnd);
-        const jsonData = JSON.parse(jsonPart.replace(/'/g, '"'));
-        return extractLogFields(jsonData);
-      }
-      
-      // Fallback to simple extraction
-      const timestampMatch = logString.match(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z/) || 
-                           logString.match(/\d{2}:\d{2}:\d{2}\+\d{2}:\d{2}/);
-      const severityMatch = logString.match(/Severity: (\w+)/i) || 
-                          logString.match(/level: (\w+)/i) || 
-                          logString.match(/\[(\w+)\]/i);
-      
+  // Parse raw log strings (for non-JSON logs)
+  const parseRawLogString = (logString) => {
+    // Google Cloud Logging format pattern
+    const googleLogPattern = /^(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z)\s+(?<severity>\w+)\s+(?<message>.*)/;
+    const match = logString.match(googleLogPattern);
+
+    if (match) {
       return {
-        timestamp: timestampMatch ? timestampMatch[0] : 'Unknown',
-        severity: severityMatch ? severityMatch[1] : 'INFO',
-        message: logString.length > 100 ? `${logString.substring(0, 100)}...` : logString,
-        source: 'Unknown',
-        namespace: 'Unknown',
-        raw: logString
-      };
-    } catch (e) {
-      return {
-        timestamp: 'Error',
-        severity: 'ERROR',
-        message: 'Failed to parse log',
+        id: `${match.groups.timestamp}-${Math.random().toString(36).substr(2, 9)}`,
+        timestamp: match.groups.timestamp,
+        severity: match.groups.severity,
+        message: match.groups.message,
+        source: 'Google Cloud',
+        service: 'Unknown',
         raw: logString
       };
     }
+
+    // Fallback for other formats
+    return {
+      id: `raw-${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: 'Unknown',
+      severity: 'INFO',
+      message: logString.length > 100 ? `${logString.substring(0, 100)}...` : logString,
+      source: 'Unknown',
+      service: 'Unknown',
+      raw: logString
+    };
+  };
+
+  // Group logs by date (for potential date-based organization)
+  const groupLogsByDate = (logs) => {
+    const grouped = {};
+    logs.forEach(log => {
+      const date = log.timestamp.split('T')[0] || 'no-date';
+      if (!grouped[date]) {
+        grouped[date] = [];
+      }
+      grouped[date].push(log);
+    });
+    return grouped;
   };
 
   const logs = processLogs(logData);
+  const groupedLogs = groupLogsByDate(logs);
+
+  // Severity color mapping
+  const getSeverityColor = (severity) => {
+    const severityMap = {
+      ERROR: '#f56565',
+      WARN: '#ed8936',
+      WARNING: '#ed8936',
+      INFO: '#4299e1',
+      DEBUG: '#9f7aea',
+      TRACE: '#a0aec0',
+      DEFAULT: darkMode ? '#4a5568' : '#a0aec0'
+    };
+    return severityMap[severity.toUpperCase()] || severityMap.DEFAULT;
+  };
+
+  // Format timestamp for display
+  const formatTimestamp = (timestamp) => {
+    if (timestamp === 'Unknown') return timestamp;
+    try {
+      const date = new Date(timestamp);
+      return date.toLocaleString();
+    } catch (e) {
+      return timestamp;
+    }
+  };
 
   return (
     <div style={{
       width: '100%',
       overflowX: 'auto',
-      marginTop: '10px'
+      marginTop: '10px',
+      fontFamily: 'monospace'
     }}>
-      <table style={{
-        width: '100%',
-        borderCollapse: 'collapse',
-        fontSize: '14px',
-        color: darkMode ? '#e2e8f0' : '#2d3748'
-      }}>
-        <thead>
-          <tr style={{
-            backgroundColor: darkMode ? '#2d3748' : '#edf2f7',
-            borderBottom: `1px solid ${darkMode ? '#4a5568' : '#e2e8f0'}`
+      {Object.entries(groupedLogs).map(([date, dateLogs]) => (
+        <div key={date} style={{ marginBottom: '20px' }}>
+          <h4 style={{
+            margin: '10px 0',
+            padding: '5px 10px',
+            backgroundColor: darkMode ? '#2d3748' : '#e2e8f0',
+            color: darkMode ? 'white' : '#2d3748',
+            borderRadius: '4px',
+            display: 'inline-block'
           }}>
-            <th style={{ padding: '10px', textAlign: 'left', width: '15%' }}>Timestamp</th>
-            <th style={{ padding: '10px', textAlign: 'left', width: '10%' }}>Severity</th>
-            <th style={{ padding: '10px', textAlign: 'left', width: '20%' }}>Source</th>
-            <th style={{ padding: '10px', textAlign: 'left', width: '15%' }}>Namespace</th>
-            <th style={{ padding: '10px', textAlign: 'left', width: '30%' }}>Message</th>
-            <th style={{ padding: '10px', textAlign: 'center', width: '10%' }}>Details</th>
-          </tr>
-        </thead>
-        <tbody>
-          {logs.map((log, index) => (
-            <>
-              <tr key={index} style={{
-                borderBottom: `1px solid ${darkMode ? '#4a5568' : '#e2e8f0'}`,
-                backgroundColor: darkMode ? 
-                  (index % 2 ? '#1a202c' : '#2d3748') : 
-                  (index % 2 ? '#f7fafc' : 'white')
+            {date === 'no-date' ? 'Logs' : new Date(date).toDateString()}
+          </h4>
+          
+          <table style={{
+            width: '100%',
+            borderCollapse: 'collapse',
+            fontSize: '13px',
+            color: darkMode ? '#e2e8f0' : '#2d3748',
+            tableLayout: 'fixed'
+          }}>
+            <thead>
+              <tr style={{
+                backgroundColor: darkMode ? '#2d3748' : '#edf2f7',
+                borderBottom: `1px solid ${darkMode ? '#4a5568' : '#e2e8f0'}`
               }}>
-                <td style={{ padding: '10px' }}>{log.timestamp}</td>
-                <td style={{ padding: '10px' }}>
-                  <span style={{
-                    display: 'inline-block',
-                    padding: '3px 8px',
-                    borderRadius: '4px',
-                    backgroundColor: getSeverityColor(log.severity, darkMode),
-                    color: 'white',
-                    fontSize: '12px',
-                    fontWeight: 'bold'
-                  }}>
-                    {log.severity}
-                  </span>
-                </td>
-                <td style={{ padding: '10px' }}>{log.source}</td>
-                <td style={{ padding: '10px' }}>{log.namespace}</td>
-                <td style={{ padding: '10px' }}>{log.message}</td>
-                <td style={{ padding: '10px', textAlign: 'center' }}>
-                  <button 
-                    onClick={() => toggleExpand(log.timestamp)}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: darkMode ? '#cbd5e0' : '#4a5568',
-                      cursor: 'pointer',
-                      transform: expandedLogs[log.timestamp] ? 'rotate(90deg)' : 'rotate(0)',
-                      transition: 'transform 0.2s ease'
-                    }}
-                  >
-                    ➔
-                  </button>
-                </td>
+                <th style={{ padding: '8px 10px', textAlign: 'left', width: '20%' }}>Timestamp</th>
+                <th style={{ padding: '8px 10px', textAlign: 'left', width: '10%' }}>Level</th>
+                <th style={{ padding: '8px 10px', textAlign: 'left', width: '20%' }}>Service</th>
+                <th style={{ padding: '8px 10px', textAlign: 'left', width: '30%' }}>Message</th>
+                <th style={{ padding: '8px 10px', textAlign: 'center', width: '10%' }}>Details</th>
               </tr>
-              {expandedLogs[log.timestamp] && (
-                <tr style={{
-                  backgroundColor: darkMode ? '#1a202c' : '#edf2f7',
-                  borderBottom: `1px solid ${darkMode ? '#4a5568' : '#e2e8f0'}`
-                }}>
-                  <td colSpan="6" style={{ padding: '15px' }}>
-                    <pre style={{
-                      margin: 0,
-                      whiteSpace: 'pre-wrap',
-                      wordWrap: 'break-word',
-                      fontFamily: 'monospace',
-                      fontSize: '13px',
-                      color: darkMode ? '#cbd5e0' : '#4a5568'
+            </thead>
+            <tbody>
+              {dateLogs.map((log) => (
+                <>
+                  <tr key={log.id} style={{
+                    borderBottom: `1px solid ${darkMode ? '#4a5568' : '#e2e8f0'}`,
+                    backgroundColor: darkMode ? '#1a202c' : 'white',
+                    ':hover': {
+                      backgroundColor: darkMode ? '#2d3748' : '#f7fafc'
+                    }
+                  }}>
+                    <td style={{ padding: '8px 10px', verticalAlign: 'top' }}>
+                      {formatTimestamp(log.timestamp)}
+                    </td>
+                    <td style={{ padding: '8px 10px', verticalAlign: 'top' }}>
+                      <span style={{
+                        display: 'inline-block',
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        backgroundColor: getSeverityColor(log.severity),
+                        color: 'white',
+                        fontWeight: 'bold',
+                        fontSize: '12px'
+                      }}>
+                        {log.severity}
+                      </span>
+                    </td>
+                    <td style={{ padding: '8px 10px', verticalAlign: 'top' }}>{log.service}</td>
+                    <td style={{ padding: '8px 10px', verticalAlign: 'top' }}>{log.message}</td>
+                    <td style={{ padding: '8px 10px', textAlign: 'center', verticalAlign: 'top' }}>
+                      <button
+                        onClick={() => toggleExpand(log.id)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: darkMode ? '#cbd5e0' : '#4a5568',
+                          cursor: 'pointer',
+                          transform: expandedLogs[log.id] ? 'rotate(90deg)' : 'rotate(0)',
+                          transition: 'transform 0.2s ease',
+                          padding: '5px'
+                        }}
+                        aria-label={expandedLogs[log.id] ? 'Collapse details' : 'Expand details'}
+                      >
+                        ➔
+                      </button>
+                    </td>
+                  </tr>
+                  {expandedLogs[log.id] && (
+                    <tr style={{
+                      backgroundColor: darkMode ? '#2d3748' : '#f7fafc'
                     }}>
-                      {typeof log.raw === 'object' ? 
-                        JSON.stringify(log.raw, null, 2) : 
-                        log.raw}
-                    </pre>
-                  </td>
-                </tr>
-              )}
-            </>
-          ))}
-        </tbody>
-      </table>
+                      <td colSpan="5" style={{ padding: '10px' }}>
+                        <pre style={{
+                          margin: 0,
+                          whiteSpace: 'pre-wrap',
+                          wordWrap: 'break-word',
+                          fontSize: '12px',
+                          color: darkMode ? '#cbd5e0' : '#4a5568',
+                          backgroundColor: darkMode ? '#1a202c' : '#edf2f7',
+                          padding: '10px',
+                          borderRadius: '4px',
+                          overflowX: 'auto',
+                          maxHeight: '300px'
+                        }}>
+                          {typeof log.raw === 'object' ? 
+                            JSON.stringify(log.raw, null, 2) : 
+                            log.raw}
+                        </pre>
+                      </td>
+                    </tr>
+                  )}
+                </>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
     </div>
   );
 };
@@ -199,7 +286,8 @@ const MessageBubble = ({ message, darkMode }) => {
                    (typeof message.text === 'string' && 
                     (message.text.includes('timestamp') || 
                      message.text.includes('severity') || 
-                     message.text.includes('namespace')));
+                     message.text.includes('httpRequest') || 
+                     message.text.includes('jsonPayload')));
 
   const renderMarkdown = (text) => {
     if (isLogData) return '';
