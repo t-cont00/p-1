@@ -1,3 +1,36 @@
+<form 
+  onSubmit={handleSubmit} 
+  className="input-form" 
+  style={{
+    width: '100%',
+    maxWidth: '800px',
+    padding: '16px 20px',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    background: darkMode 
+      ? 'rgba(32, 33, 36, 0.8)'  // Dark mode semi-transparent
+      : 'rgba(255, 255, 255, 0.9)', // Light mode semi-transparent
+    borderRadius: '16px',
+    marginTop: 'auto',
+    marginBottom: '20px',
+    backdropFilter: 'blur(12px)',
+    WebkitBackdropFilter: 'blur(12px)',
+    boxShadow: darkMode 
+      ? '0 4px 24px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.08)'
+      : '0 4px 24px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(0, 0, 0, 0.05)',
+    border: 'none',
+    transition: 'all 0.3s ease'
+  }}
+>
+
+
+
+
+
+
+
 // Update the chat container style in your main component:
 <div 
   className="chat-container" 
