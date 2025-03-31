@@ -1,3 +1,64 @@
+.json-table-container {
+  width: 100%;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+
+.json-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 0.85em;
+}
+
+.json-table.dark {
+  background-color: #1e1e1e;
+  color: #e2e8f0;
+}
+
+.json-table-header {
+  background-color: #f0f0f0;
+  padding: 8px 12px;
+  text-align: left;
+  font-weight: 600;
+}
+
+.dark .json-table-header {
+  background-color: #2d3748;
+  color: white;
+}
+
+.json-table-cell {
+  padding: 8px 12px;
+  border-bottom: 1px solid #e2e8f0;
+  vertical-align: top;
+}
+
+.dark .json-table-cell {
+  border-bottom: 1px solid #4a5568;
+}
+
+.json-table tr:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.dark .json-table tr:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.json-table pre {
+  margin: 0;
+  white-space: pre-wrap;
+  font-family: inherit;
+}
+
+
+
+
+
+
+
+
 <form 
   onSubmit={handleSubmit} 
   className="input-form" 
