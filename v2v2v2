@@ -1,0 +1,791 @@
+import { useState, useRef, useEffect } from 'react';
+import { keyframes } from '@emotion/react';
+import { 
+  AppBar, 
+  Toolbar, 
+  Typography, 
+  IconButton, 
+  Box,
+  Paper,
+  TextField,
+  Button,
+  Chip,
+  CircularProgress,
+  CssBaseline,
+  ThemeProvider,
+  createTheme,
+  Drawer,
+  List,
+  ListItem,
+  ListItemButton,
+  ListItemText,
+  Divider,
+  Fab
+} from '@mui/material';
+import { 
+  HelpOutline as HelpIcon,
+  DarkMode as DarkModeIcon,
+  LightMode as LightModeIcon,
+  Send as SendIcon,
+  Menu as MenuIcon,
+  ChevronLeft as ChevronLeftIcon,
+  Search as SearchIcon, 
+  Lightbulb as SolutionIcon, 
+  History as HistoryIcon
+} from '@mui/icons-material';
+import '@fontsource/poppins';
+import '@fontsource/russo-one';
+import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
+
+// Custom animations
+const float = keyframes`
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-5px); }
+  100% { transform: translateY(0px); }
+`;
+
+const pulse = keyframes`
+  0% { transform: scale(1); }
+  50% { transform: scale(1.03); }
+  100% { transform: scale(1); }
+`;
+
+const typing = keyframes`
+  0% { transform: translateY(0px); opacity: 0.4; }
+  50% { transform: translateY(-3px); opacity: 1; }
+  100% { transform: translateY(0px); opacity: 0.4; }
+`;
+
+const slideIn = keyframes`
+  from { transform: translateY(10px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+`;
+
+const Chatbot = () => {
+  // Theme and UI states
+  const [darkMode, setDarkMode] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  
+  // Blue/white theme for light mode, cyan/dark for dark mode
+  const theme = createTheme({
+    typography: {
+      fontFamily: '"Poppins", "Helvetica", "Arial", sans-serif',
+      h1: {
+        fontFamily: '"Russo One", "Helvetica", "Arial", sans-serif',
+      },
+      h2: {
+        fontFamily: '"Russo One", "Helvetica", "Arial", sans-serif',
+      },
+      h3: {
+        fontFamily: '"Russo One", "Helvetica", "Arial", sans-serif',
+      },
+      h4: {
+        fontFamily: '"Russo One", "Helvetica", "Arial", sans-serif',
+      },
+      h5: {
+        fontFamily: '"Russo One", "Helvetica", "Arial", sans-serif',
+      },
+      h6: {
+        fontFamily: '"Russo One", "Helvetica", "Arial", sans-serif',
+      },
+    },
+    palette: {
+      mode: darkMode ? 'dark' : 'light',
+      primary: {
+        main: darkMode ? '#00b4d8' : '#1976d2', // Cyan for dark, blue for light
+        contrastText: '#fff',
+      },
+      secondary: {
+        main: darkMode ? '#1976d2' : '#00b4d8', // Blue for dark, cyan for light
+        contrastText: '#fff',
+      },
+      background: {
+        default: darkMode ? '#121212' : '#f5f9ff',
+        paper: darkMode ? '#1e1e1e' : '#ffffff',
+      },
+      text: {
+        primary: darkMode ? '#ffffff' : '#000000',
+        secondary: darkMode ? '#00b4d8' : '#1976d2',
+      },
+    },
+    components: {
+      MuiButton: {
+        styleOverrides: {
+          root: {
+            fontWeight: 600,
+            textTransform: 'none',
+            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            '&:hover': {
+              transform: 'translateY(-2px)',
+            },
+          },
+        },
+      },
+      MuiPaper: {
+        styleOverrides: {
+          root: {
+            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+          },
+        },
+      },
+    },
+  });
+
+  // Chat states
+  const [messages, setMessages] = useState([
+    { sender: 'bot', text: "Hello! I'm your CME knowledge assistant. How can I help you today?" },
+    { sender: 'bot', text: "You can ask me about installations, configurations, or troubleshooting." }
+  ]);
+  const [input, setInput] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+  const messagesEndRef = useRef(null);
+
+  // Chat history mock data
+  const [chatHistory, setChatHistory] = useState([
+    { id: 1, title: 'Installation Guide', date: '2023-05-15' },
+    { id: 2, title: 'Configuration Help', date: '2023-05-16' },
+    { id: 3, title: 'Troubleshooting', date: '2023-05-17' },
+  ]);
+
+  // Auto-scroll to bottom of chat
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // Handle message submission
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!input.trim()) return;
+
+    const userMessage = { sender: 'user', text: input };
+    setMessages(prev => [...prev, userMessage]);
+    setInput('');
+    setIsTyping(true);
+
+    setTimeout(() => {
+      const botMessage = { 
+        sender: 'bot', 
+        text: `I received: "${input}". This is a simulated response.` 
+      };
+      setMessages(prev => [...prev, botMessage]);
+      setIsTyping(false);
+      
+      setChatHistory(prev => [
+        { id: Date.now(), title: input.slice(0, 30) + (input.length > 30 ? '...' : ''), date: new Date().toISOString().split('T')[0] },
+        ...prev
+      ]);
+    }, 1500);
+  };
+
+  return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <Box sx={{ 
+        display: 'flex', 
+        minHeight: '100vh',
+        background: darkMode 
+          ? 'radial-gradient(circle at center, #1a1a2e 0%, #121212 70%)' 
+          : 'radial-gradient(circle at center, #f0f8ff 0%, #e6f7ff 70%)',
+      }}>
+        {/* Sidebar */}
+        <Drawer
+          variant="persistent"
+          open={sidebarOpen}
+          sx={{
+            width: sidebarOpen ? 280 : 0,
+            flexShrink: 0,
+            '& .MuiDrawer-paper': {
+              width: 280,
+              boxSizing: 'border-box',
+              height: 'calc(100vh - 64px)', // Subtract header height
+              top: 64,
+              position: 'fixed',
+              overflow: 'hidden',
+              background: darkMode 
+                ? 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)' 
+                : 'linear-gradient(135deg, #ffffff 0%, #f5f9ff 100%)',
+              borderRight: darkMode 
+                ? '1px solid rgba(0, 180, 216, 0.2)' 
+                : '1px solid rgba(25, 118, 210, 0.2)',
+              boxShadow: darkMode 
+                ? '0 0 20px rgba(0, 180, 216, 0.1)' 
+                : '0 0 20px rgba(25, 118, 210, 0.1)',
+            },
+          }}
+        >
+          {/* History Header */}
+          <Box sx={{ 
+            p: 2,
+            display: 'flex',
+            alignItems: 'center',
+            borderBottom: darkMode 
+              ? '1px solid rgba(0, 180, 216, 0.3)' 
+              : '1px solid rgba(25, 118, 210, 0.3)',
+            background: darkMode 
+              ? 'rgba(26, 26, 46, 0.8)' 
+              : 'rgba(255, 255, 255, 0.8)',
+            backdropFilter: 'blur(8px)',
+            position: 'sticky',
+            top: 0,
+            zIndex: 1
+          }}>
+            <HistoryIcon sx={{ 
+              mr: 1.5,
+              color: darkMode ? '#00b4d8' : '#1976d2',
+              fontSize: '1.8rem',
+              animation: `${float} 3s ease-in-out infinite`
+            }} />
+            <Typography variant="h6" sx={{ 
+              color: darkMode ? '#ffffff' : '#000000',
+              fontWeight: 700,
+              fontFamily: '"Russo One", sans-serif',
+              letterSpacing: '0.05em'
+            }}>
+              CHAT HISTORY
+            </Typography>
+          </Box>
+
+          <Box sx={{ height: '8px' }} />
+
+          {/* Chat History List */}
+          <Box sx={{ 
+            width: '100%',
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            height: 'calc(100vh - 188px)',
+            '& .MuiListItem-root': {
+              width: 'calc(100% - 16px)',
+              mx: '8px',
+              mt: '8px',
+            }
+          }}>
+            <List sx={{ width: '100%', pt: 0 }}>
+              {chatHistory.map((chat) => (
+                <ListItem key={chat.id} disablePadding sx={{ mb: 1 }}>
+                  <ListItemButton 
+                    className="history-item" 
+                    sx={{
+                      width: '100%',
+                      borderRadius: 2,
+                      backdropFilter: 'blur(8px)',
+                      background: darkMode 
+                        ? 'rgba(0, 180, 216, 0.05)' 
+                        : 'rgba(25, 118, 210, 0.05)',
+                      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                      py: 1.5,
+                      border: darkMode 
+                        ? '1px solid rgba(0, 180, 216, 0.2)' 
+                        : '1px solid rgba(25, 118, 210, 0.2)',
+                      '&:hover': {
+                        transform: 'translateX(5px)',
+                        background: darkMode 
+                          ? 'rgba(0, 180, 216, 0.15)' 
+                          : 'rgba(25, 118, 210, 0.15)',
+                        boxShadow: darkMode 
+                          ? '0 5px 15px rgba(0, 180, 216, 0.2)' 
+                          : '0 5px 15px rgba(25, 118, 210, 0.2)',
+                      }
+                    }}
+                  >
+                    <ListItemText 
+                      primary={chat.title} 
+                      secondary={chat.date}
+                      primaryTypographyProps={{ 
+                        noWrap: true,
+                        fontWeight: 600,
+                        color: darkMode ? '#ffffff' : '#000000',
+                        fontFamily: '"Poppins", sans-serif',
+                      }}
+                      secondaryTypographyProps={{ 
+                        noWrap: true,
+                        color: darkMode ? '#00b4d8' : '#1976d2',
+                        fontSize: '0.75rem',
+                        fontWeight: 500,
+                      }}
+                    />
+                  </ListItemButton>
+                </ListItem>
+              ))}
+            </List>
+          </Box>
+        </Drawer>
+
+        {/* Main Content */}
+        <Box component="main" sx={{ 
+          flexGrow: 1,
+          width: '100%',
+          maxWidth: '1200px',
+          mx: 'auto'
+        }}>
+          {/* Header */}
+          <AppBar 
+  position="fixed"
+  sx={{ 
+    bgcolor: darkMode ? '#0a192f' : '#ffffff',
+    color: darkMode ? '#ffffff' : '#000000',
+    boxShadow: darkMode 
+      ? '0 4px 20px rgba(0, 0, 0, 0.3)'
+      : '0 2px 15px rgba(0, 0, 0, 0.1)',
+    zIndex: theme.zIndex.drawer + 1,
+    width: '100%',
+    padding: 0,
+    borderBottom: darkMode 
+      ? '1px solid rgba(255, 255, 255, 0.1)'
+      : '1px solid rgba(0, 0, 0, 0.05)',
+    transition: 'box-shadow 0.3s ease',
+    '&:hover': {
+      boxShadow: darkMode 
+        ? '0 6px 25px rgba(0, 0, 0, 0.4)'
+        : '0 4px 20px rgba(0, 0, 0, 0.15)',
+    },
+    height: '64px', // Changed from 80px to match previous
+  }}
+>
+  <Toolbar disableGutters sx={{ 
+    width: '100%',
+    justifyContent: 'space-between',
+    paddingLeft: '16px', // Direct padding for left edge
+    paddingRight: '16px', // Direct padding for right edge
+    // maxWidth: '1200px',
+    mx: 'auto',
+  }}>
+    {/* Left-aligned items */}
+    <Box sx={{ 
+      display: 'flex', 
+      alignItems: 'center',
+      marginLeft: 0
+    }}>
+      <Box
+        component="img"
+        src="https://cdn-icons-gif.flaticon.com/15579/15579168.gif"
+        alt="Logo"
+        sx={{
+          width: 40,
+          height: 40,
+          borderRadius: '50%',
+          objectFit: 'contain',
+          marginRight: '12px',
+          animation: `${pulse} 2s ease-in-out infinite`,
+          border: darkMode 
+            ? '2px solid #00b4d8' 
+            : '2px solid #1976d2',
+        }}
+      />
+      <Typography variant="h6" component="div" sx={{
+        fontFamily: '"Russo One", sans-serif',
+        letterSpacing: '0.05em',
+        background: darkMode 
+          ? 'linear-gradient(90deg, #00b4d8, #90e0ef)' 
+          : 'linear-gradient(90deg, #1976d2, #42a5f5)',
+        WebkitBackgroundClip: 'text',
+        WebkitTextFillColor: 'transparent',
+      }}>
+        CME KNOWLEDGE ASSISTANT
+      </Typography>
+    </Box>
+
+    {/* Right-aligned items - flush to edge */}
+    <Box sx={{ 
+      display: 'flex', 
+      alignItems: 'center',
+      marginRight: 0
+    }}>
+      <IconButton 
+        color="inherit" 
+        sx={{ 
+          marginLeft: '8px',
+          padding: '8px',
+          transition: 'all 0.3s',
+          '&:hover': {
+            transform: 'rotate(15deg)',
+            color: darkMode ? '#00b4d8' : '#1976d2',
+          }
+        }}
+      >
+        <HelpIcon />
+      </IconButton>
+      <IconButton 
+        color="inherit" 
+        onClick={() => setDarkMode(!darkMode)}
+        aria-label={darkMode ? 'light mode' : 'dark mode'}
+        sx={{ 
+          marginLeft: '8px',
+          padding: '8px',
+          transition: 'all 0.3s',
+          '&:hover': {
+            transform: 'scale(1.2) rotate(30deg)',
+            color: darkMode ? '#00b4d8' : '#1976d2',
+          }
+        }}
+      >
+        {darkMode ? <LightModeIcon /> : <DarkModeIcon />}
+      </IconButton>
+    </Box>
+  </Toolbar>
+</AppBar>
+
+          {/* Floating Sidebar Toggle Button */}
+          <Fab
+            color="primary"
+            aria-label="open chat history"
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            sx={{
+              position: 'fixed',
+              left: 16,
+              bottom: 16,
+              zIndex: 1200,
+              display: { xs: 'none', md: 'flex' },
+              animation: `${pulse} 2s infinite`,
+              background: darkMode 
+                ? 'linear-gradient(45deg, #00b4d8, #1976d2)' 
+                : 'linear-gradient(45deg, #1976d2, #00b4d8)',
+              '&:hover': {
+                transform: 'scale(1.1)',
+                background: darkMode 
+                  ? 'linear-gradient(45deg, #1976d2, #00b4d8)' 
+                  : 'linear-gradient(45deg, #00b4d8, #1976d2)',
+              }
+            }}
+          >
+            {sidebarOpen ? <ChevronLeftIcon /> : <HistoryIcon />}
+          </Fab>
+
+          {/* Chat Area */}
+          <Box sx={{ 
+            pt: '80px', 
+            height: 'calc(100vh - 80px)',
+            display: 'flex',
+            flexDirection: 'column',
+            width: '100%',
+            maxWidth: 1200,
+            mx: 'auto',
+            px: 3,
+          }}>
+            {/* Messages */}
+            <Box sx={{ 
+              flex: 1, 
+              overflowY: 'auto', 
+              py: 3,
+              borderRadius:10,
+              background: darkMode 
+                ? 'radial-gradient(circle at center, #1a1a2e 0%, #121212 70%)' 
+                : 'radial-gradient(circle at center, #f0f8ff 0%, #e6f7ff 70%)',
+              '&::-webkit-scrollbar': {
+                width: '8px',
+              },
+              '&::-webkit-scrollbar-track': {
+                background: darkMode ? '#1a1a2e' : '#f0f0f0',
+              },
+              '&::-webkit-scrollbar-thumb': {
+                background: darkMode ? '#00b4d8' : '#1976d2',
+                borderRadius: '4px',
+              },
+            }}>
+              {messages.map((message, index) => (
+                <Box 
+                  key={index} 
+                  sx={{ 
+                    display: 'flex', 
+                    justifyContent: message.sender === 'user' ? 'flex-end' : 'flex-start',
+                    mb: 3,
+                    px: 1,
+                    animation: `${slideIn} 0.3s ease-out`
+                  }}
+                >
+                  <Paper
+          sx={{
+            p: 2.5,
+            maxWidth: '80%',
+            background: message.sender === 'user' 
+              ? 'linear-gradient(135deg, #1976d2, #42a5f5)' 
+              : darkMode 
+                ? 'linear-gradient(135deg, #0d2b4e, #1a3a6a)'  // Soft blue gradient for AI
+                : '#ffffff',
+            color: message.sender === 'user' 
+              ? '#ffffff' 
+              : darkMode ? '#e0e0e0' : 'text.primary',  // Lighter text in dark mode
+            borderRadius: message.sender === 'user' 
+              ? '20px 20px 0 20px' 
+              : '20px 20px 20px 0',
+            boxShadow: message.sender === 'user' 
+              ? '0 5px 15px rgba(25, 118, 210, 0.3)' 
+              : 'none',  // No shadow for AI in dark mode
+            transition: 'all 0.3s ease',
+            '&:hover': {
+              transform: 'translateY(-3px)',
+              boxShadow: message.sender === 'user' 
+                ? '0 8px 20px rgba(25, 118, 210, 0.4)' 
+                : 'none',  // No hover shadow for AI
+            }
+          }}
+        >
+                    <Typography variant="body1" sx={{
+                      fontFamily: '"Poppins", sans-serif',
+                      fontWeight: 500,
+                      lineHeight: 1.6,
+                    }}>
+                      {message.text}
+                    </Typography>
+                  </Paper>
+                </Box>
+              ))}
+              
+              {isTyping && (
+                <Box sx={{ 
+                  display: 'flex', 
+                  justifyContent: 'flex-start', 
+                  mb: 3, 
+                  px: 1,
+                  animation: `${pulse} 1.5s infinite`
+                }}>
+                  <Paper sx={{ 
+                    p: 2.5,
+                    background: darkMode 
+                      ? 'linear-gradient(135deg, #1e1e1e, #2a2a2a)' 
+                      : '#ffffff',
+                    borderRadius: '20px 20px 20px 0',
+                    boxShadow: darkMode 
+                      ? '0 5px 15px rgba(0, 180, 216, 0.2)' 
+                      : '0 5px 15px rgba(0, 0, 0, 0.1)',
+                  }}>
+                    <Box display="flex" gap={1.5} alignItems="center">
+                      {[0, 0.3, 0.6].map((delay) => (
+                        <Box
+                          key={delay}
+                          sx={{
+                            width: 10,
+                            height: 10,
+                            borderRadius: '50%',
+                            background: darkMode 
+                              ? 'linear-gradient(135deg, #00b4d8, #0077b6)' 
+                              : 'linear-gradient(135deg, #1976d2, #42a5f5)',
+                            animation: `${typing} 1.4s infinite ease-in-out`,
+                            animationDelay: `${delay}s`
+                          }}
+                        />
+                      ))}
+                      <Typography variant="body2" sx={{ 
+                        ml: 1,
+                        color: darkMode ? '#00b4d8' : '#1976d2',
+                        fontWeight: 600,
+                      }}>
+                        typing...
+                      </Typography>
+                    </Box>
+                  </Paper>
+                </Box>
+              )}
+              
+              <div ref={messagesEndRef} />
+            </Box>
+
+            {/* Input Area */}
+            <Box sx={{ 
+              width: '100%',
+              maxWidth: 1200,
+              mx: 'auto',
+              px: 1,
+              position: 'relative',
+            }}>
+              <Paper 
+                elevation={3}
+                sx={{
+                  width: '100%',
+                  p: 3,
+                  mb:-8,
+                  background: darkMode 
+                    ? 'linear-gradient(135deg, #1a1a2e, #16213e)' 
+                    : 'linear-gradient(135deg, #ffffff, #f5f9ff)',
+                  borderRadius: '25px',
+                  boxShadow: darkMode 
+                    ? '0 5px 20px rgba(0, 180, 216, 0.2)' 
+                    : '0 5px 20px rgba(25, 118, 210, 0.2)',
+                  border: darkMode 
+                    ? '1px solid rgba(0, 180, 216, 0.3)' 
+                    : '1px solid rgba(25, 118, 210, 0.3)',
+                  transition: 'all 0.3s ease',
+                  '&:hover': {
+                    boxShadow: darkMode 
+                      ? '0 8px 25px rgba(0, 180, 216, 0.3)' 
+                      : '0 8px 25px rgba(25, 118, 210, 0.3)',
+                  }
+                }}
+              >
+                {/* Input Form */}
+                <Box component="form" onSubmit={handleSubmit} sx={{ 
+                  display: 'flex', 
+                  gap: 2,
+                  alignItems: 'center',
+                  height:30,
+                }}>
+                  <TextField
+                    fullWidth
+                    variant="outlined"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    placeholder="Ask me anything about CME..."
+                    disabled={isTyping}
+                    size="small"
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        borderRadius: '12px',
+                        background: darkMode ? 'rgba(0, 180, 216, 0.05)' : 'rgba(25, 118, 210, 0.05)',
+                        borderColor: darkMode ? 'rgba(0, 180, 216, 0.3)' : 'rgba(25, 118, 210, 0.3)',
+                        '& fieldset': {
+                          borderColor: darkMode ? 'rgba(0, 180, 216, 0.3)' : 'rgba(25, 118, 210, 0.3)',
+                        },
+                        '&:hover fieldset': {
+                          borderColor: darkMode ? 'rgba(0, 180, 216, 0.5)' : 'rgba(25, 118, 210, 0.5)',
+                        },
+                        '&.Mui-focused fieldset': {
+                          borderColor: darkMode ? '#00b4d8' : '#1976d2',
+                          boxShadow: darkMode 
+                            ? '0 0 0 2px rgba(0, 180, 216, 0.2)' 
+                            : '0 0 0 2px rgba(25, 118, 210, 0.2)',
+                        },
+                      },
+                    }}
+                    InputProps={{
+                      style: {
+                        color: darkMode ? '#ffffff' : '#000000',
+                        fontFamily: '"Poppins", sans-serif',
+                      }
+                    }}
+                  />
+                  
+                  <Button
+                    type="submit"
+                    variant="contained"
+                    disabled={!input.trim() || isTyping}
+                    sx={{
+                      minWidth: '56px',
+                      width: '56px',
+                      height: '56px',
+                      borderRadius: '50%',
+                      background: darkMode 
+                        ? 'linear-gradient(45deg, #00b4d8, #0077b6)' 
+                        : 'linear-gradient(45deg, #1976d2, #42a5f5)',
+                      boxShadow: darkMode 
+                        ? '0 5px 15px rgba(0, 180, 216, 0.4)' 
+                        : '0 5px 15px rgba(25, 118, 210, 0.4)',
+                      transition: 'all 0.3s ease',
+                      '&:hover': {
+                        transform: 'scale(1.1) rotate(10deg)',
+                        boxShadow: darkMode 
+                          ? '0 8px 20px rgba(0, 180, 216, 0.6)' 
+                          : '0 8px 20px rgba(25, 118, 210, 0.6)',
+                      },
+                      '&:disabled': {
+                        background: darkMode 
+                          ? 'rgba(0, 180, 216, 0.2)' 
+                          : 'rgba(25, 118, 210, 0.2)',
+                      }
+                    }}
+                  >
+                    {isTyping ? (
+                      <CircularProgress size={24} sx={{ color: '#ffffff' }} />
+                    ) : (
+                      <SendIcon fontSize="medium" sx={{ 
+                        color: '#ffffff',
+                        transition: 'all 0.3s ease',
+                      }} />
+                    )}
+                  </Button>
+                </Box>
+                
+                {/* Quick Action Chips */}
+                <Box sx={{ 
+                  display: 'flex', 
+                  gap: 1.5,
+                  mt: 2,
+                  flexWrap: 'wrap',
+                }}>
+                  <Chip
+                    icon={<SearchIcon fontSize="small" sx={{ 
+                      color: darkMode ? '#00b4d8' : '#1976d2',
+                    }} />}
+                    label="Deep Summary"
+                    size="medium"
+                    clickable
+                    sx={{ 
+                      borderRadius: '12px',
+                      background: darkMode 
+                        ? 'rgba(0, 180, 216, 0.1)' 
+                        : 'rgba(25, 118, 210, 0.1)',
+                      border: darkMode 
+                        ? '1px solid rgba(0, 180, 216, 0.3)' 
+                        : '1px solid rgba(25, 118, 210, 0.3)',
+                      color: darkMode ? '#00b4d8' : '#1976d2',
+                      fontWeight: 600,
+                      fontFamily: '"Poppins", sans-serif',
+                      transition: 'all 0.3s ease',
+                      '&:hover': {
+                        background: darkMode 
+                          ? 'rgba(0, 180, 216, 0.2)' 
+                          : 'rgba(25, 118, 210, 0.2)',
+                        transform: 'translateY(-2px)',
+                      }
+                    }}
+                  />
+                  <Chip
+                    icon={<SolutionIcon fontSize="small" sx={{ 
+                      color: darkMode ? '#00b4d8' : '#1976d2',
+                    }} />}
+                    label="Solution Finder"
+                    size="medium"
+                    clickable
+                    sx={{ 
+                      borderRadius: '12px',
+                      background: darkMode 
+                        ? 'rgba(0, 180, 216, 0.1)' 
+                        : 'rgba(25, 118, 210, 0.1)',
+                      border: darkMode 
+                        ? '1px solid rgba(0, 180, 216, 0.3)' 
+                        : '1px solid rgba(25, 118, 210, 0.3)',
+                      color: darkMode ? '#00b4d8' : '#1976d2',
+                      fontWeight: 600,
+                      fontFamily: '"Poppins", sans-serif',
+                      transition: 'all 0.3s ease',
+                      '&:hover': {
+                        background: darkMode 
+                          ? 'rgba(0, 180, 216, 0.2)' 
+                          : 'rgba(25, 118, 210, 0.2)',
+                        transform: 'translateY(-2px)',
+                      }
+                    }}
+                  />
+                  <Chip
+        icon={<RocketLaunchIcon fontSize="small" />}
+        label="Export Mode"
+        size="Medium"
+        clickable
+        sx={{ 
+          borderRadius: '8px',
+          background: darkMode 
+            ? 'rgba(0, 180, 216, 0.1)' 
+            : 'rgba(25, 118, 210, 0.1)',
+          color: darkMode ? '#00b4d8' : '#1976d2',
+          ml: 'auto', // Float right
+          '&:hover': {
+            background: darkMode 
+              ? 'rgba(0, 180, 216, 0.2)' 
+              : 'rgba(25, 118, 210, 0.2)',
+          },
+          '&.MuiChip-clickable:active, &.MuiChip-clickable:focus': {
+            background: darkMode 
+              ? 'rgba(0, 180, 216, 0.3)' 
+              : 'rgba(25, 118, 210, 0.3)',
+          }
+        }}
+      />
+                </Box>
+              </Paper>
+            </Box>
+          </Box>
+        </Box>
+      </Box>
+    </ThemeProvider>
+  );
+};
+
+export default Chatbot;
