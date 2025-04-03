@@ -1,0 +1,480 @@
+import { useState, useRef, useEffect } from 'react';
+import { 
+  AppBar, 
+  Toolbar, 
+  Typography, 
+  IconButton, 
+  Box,
+  Paper,
+  TextField,
+  Button,
+  Chip,
+  CircularProgress,
+  CssBaseline,
+  ThemeProvider,
+  createTheme,
+  Drawer,
+  List,
+  ListItem,
+  ListItemButton,
+  ListItemText,
+  Divider,
+  Fab
+} from '@mui/material';
+import { 
+  HelpOutline as HelpIcon,
+  DarkMode as DarkModeIcon,
+  LightMode as LightModeIcon,
+  Send as SendIcon,
+  Menu as MenuIcon,
+  ChevronLeft as ChevronLeftIcon,
+  Search as SearchIcon, 
+  Lightbulb as SolutionIcon, 
+  History as HistoryIcon
+} from '@mui/icons-material';
+
+const Chatbot = () => {
+  // Theme and UI states
+  const [darkMode, setDarkMode] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const theme = createTheme({
+    palette: {
+      mode: darkMode ? 'dark' : 'light',
+      primary: {
+        main: darkMode ? '#0a192f' : '#1976d2',
+      },
+      secondary: {
+        main: darkMode ? '#64ffda' : '#dc004e',
+      },
+      background: {
+        default: darkMode ? '#0a192f' : '#f5f5f5',
+        paper: darkMode ? '#112240' : '#ffffff',
+      },
+    },
+  });
+
+  // Chat states
+  const [messages, setMessages] = useState([
+    { sender: 'bot', text: "Hello! I'm your CME knowledge assistant. How can I help you today?" },
+    { sender: 'bot', text: "You can ask me about installations, configurations, or troubleshooting." }
+  ]);
+  const [input, setInput] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+  const messagesEndRef = useRef(null);
+
+  // Chat history mock data
+  const [chatHistory, setChatHistory] = useState([
+    { id: 1, title: 'Installation Guide', date: '2023-05-15' },
+    { id: 2, title: 'Configuration Help', date: '2023-05-16' },
+    { id: 3, title: 'Troubleshooting', date: '2023-05-17' },
+  ]);
+
+  // Auto-scroll to bottom of chat
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // Handle message submission
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!input.trim()) return;
+
+    // Add user message
+    const userMessage = { sender: 'user', text: input };
+    setMessages(prev => [...prev, userMessage]);
+    setInput('');
+    setIsTyping(true);
+
+    // Simulate bot response
+    setTimeout(() => {
+      const botMessage = { 
+        sender: 'bot', 
+        text: `I received: "${input}". This is a simulated response.` 
+      };
+      setMessages(prev => [...prev, botMessage]);
+      setIsTyping(false);
+      
+      // Add to chat history
+      setChatHistory(prev => [
+        { id: Date.now(), title: input.slice(0, 30) + (input.length > 30 ? '...' : ''), date: new Date().toISOString().split('T')[0] },
+        ...prev
+      ]);
+    }, 1500);
+  };
+
+  return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+        {/* Sidebar */}
+        <Drawer
+  variant="persistent"
+  open={sidebarOpen}
+  sx={{
+    width: sidebarOpen ? 240 : 0,
+    flexShrink: 0,
+    '& .MuiDrawer-paper': {
+      width: 240,
+      boxSizing: 'border-box',
+      height: 'calc(100vh - 64px)', // Subtract header height
+      top: 64, // Start below header
+      position: 'fixed',
+      overflow: 'hidden',
+      bgcolor: darkMode ? '#0a192f' : '#ffffff',
+    },
+  }}
+>
+  {/* History Header */}
+  <Box sx={{ 
+    p: 2,
+    display: 'flex',
+    alignItems: 'center',
+    borderBottom: darkMode ? '1px solid rgba(100, 255, 218, 0.1)' : '1px solid rgba(0, 0, 0, 0.1)',
+    bgcolor: darkMode ? 'rgba(16, 34, 64, 0.7)' : 'rgba(255, 255, 255, 0.7)',
+    backdropFilter: 'blur(8px)',
+    position: 'sticky',
+    top: 0,
+    zIndex: 1
+  }}>
+    <HistoryIcon sx={{ 
+      mr: 1.5,
+      color: darkMode ? '#64ffda' : '#1976d2',
+      fontSize: '1.5rem'
+    }} />
+    <Typography variant="h6" sx={{ 
+      color: darkMode ? '#e6f1ff' : '#000000',
+      fontWeight: 600
+    }}>
+      History
+    </Typography>
+  </Box>
+
+  {/* Added Spacer Box */}
+  <Box sx={{ height: '8px' }} /> {/* This adds space below the header */}
+
+  {/* Chat History List */}
+  <Box sx={{ 
+    width: '100%',
+    overflowY: 'auto',
+    overflowX: 'hidden',
+    height: 'calc(100vh - 188px)', // Adjusted for header + history header + spacer
+    '& .MuiListItem-root': {
+      width: 'calc(100% - 16px)',
+      mx: '8px',
+      mt: '8px', // Added top margin to each list item
+    }
+  }}>
+    <List sx={{ width: '100%', pt: 0 }}>
+      {chatHistory.map((chat) => (
+        <ListItem key={chat.id} disablePadding sx={{ mb: 1 }}>
+          <ListItemButton 
+            className="history-item" 
+            sx={{
+              width: '100%',
+              borderRadius: 2,
+              backdropFilter: 'blur(5px)',
+              background: darkMode 
+                ? 'rgba(255, 255, 255, 0.05)' 
+                : 'rgba(0, 0, 0, 0.03)',
+              transition: 'all 0.3s ease',
+              py: 1.5,
+              border: darkMode 
+                ? '1px solid rgba(100, 255, 218, 0.1)' 
+                : '1px solid rgba(25, 118, 210, 0.1)',
+              '&:hover': {
+                background: darkMode 
+                  ? 'rgba(100, 255, 218, 0.1)' 
+                  : 'rgba(25, 118, 210, 0.1)',
+              }
+            }}
+          >
+            <ListItemText 
+              primary={chat.title} 
+              secondary={chat.date}
+              primaryTypographyProps={{ 
+                noWrap: true,
+                fontWeight: 500,
+                color: darkMode ? '#e6f1ff' : '#000000',
+              }}
+              secondaryTypographyProps={{ 
+                noWrap: true,
+                color: darkMode ? '#8892b0' : '#666666',
+                fontSize: '0.75rem'
+              }}
+            />
+          </ListItemButton>
+        </ListItem>
+      ))}
+    </List>
+  </Box>
+</Drawer>
+
+        {/* Main Content */}
+        <Box component="main" sx={{ 
+          flexGrow: 1,
+          width: '100%',
+          maxWidth: '1200px',
+          mx: 'auto'
+        }}>
+          {/* Header */}
+          {/* Header */}
+          <AppBar 
+  position="fixed"
+  sx={{ 
+    bgcolor: darkMode ? '#0a192f' : '#ffffff', // Original colors
+    color: darkMode ? '#ffffff' : '#000000',   // Original text colors
+    boxShadow: theme => 
+      darkMode 
+        ? '0 4px 20px rgba(0, 0, 0, 0.3)'     // Deeper shadow for dark mode
+        : '0 2px 15px rgba(0, 0, 0, 0.1)',    // Soft shadow for light mode
+    zIndex: theme.zIndex.drawer + 1,
+    width: '100%',
+    padding: 0,
+    borderBottom: darkMode 
+      ? '1px solid rgba(255, 255, 255, 0.1)'  // Subtle border in dark mode
+      : '1px solid rgba(0, 0, 0, 0.05)',      // Lighter border in light mode
+    transition: 'box-shadow 0.3s ease',        // Smooth shadow transitions
+    '&:hover': {
+      boxShadow: darkMode 
+        ? '0 6px 25px rgba(0, 0, 0, 0.4)'     // Hover effect for dark mode
+        : '0 4px 20px rgba(0, 0, 0, 0.15)',   // Hover effect for light mode
+    },
+  }}
+>
+  <Toolbar disableGutters sx={{ 
+    width: '100%',
+    justifyContent: 'space-between',
+    paddingLeft: '16px', // Direct padding for left edge
+    paddingRight: '16px', // Direct padding for right edge
+  }}>
+    {/* Left-aligned items - no container constraints */}
+    <Box sx={{ 
+      display: 'flex', 
+      alignItems: 'center',
+      marginLeft: 0 // Ensure flush to edge
+    }}>
+      <Box
+        component="img"
+        src="https://cdn-icons-gif.flaticon.com/15579/15579168.gif"
+        alt="Logo"
+        sx={{
+          width: 40,
+          height: 40,
+          borderRadius:50,
+          objectFit: 'contain',
+          marginRight: '12px',
+        }}
+      />
+      <Typography variant="h6" component="div">
+        CME Knowledge Assistant
+      </Typography>
+    </Box>
+
+    {/* Right-aligned items - no container constraints */}
+    <Box sx={{ 
+      display: 'flex', 
+      alignItems: 'center',
+      marginRight: 0 // Ensure flush to edge
+    }}>
+      <IconButton 
+        color="inherit" 
+        sx={{ 
+          marginLeft: '8px',
+          padding: '8px' // Tight padding
+        }}
+      >
+        <HelpIcon />
+      </IconButton>
+      <IconButton 
+        color="inherit" 
+        onClick={() => setDarkMode(!darkMode)}
+        aria-label={darkMode ? 'light mode' : 'dark mode'}
+        sx={{ 
+          marginLeft: '8px',
+          padding: '8px' // Tight padding
+        }}
+      >
+        {darkMode ? <LightModeIcon /> : <DarkModeIcon />}
+      </IconButton>
+    </Box>
+  </Toolbar>
+</AppBar>
+
+          {/* Floating Sidebar Toggle Button */}
+          <Fab
+            color="primary"
+            aria-label="open chat history"
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            sx={{
+              position: 'fixed',
+              left: 16,
+              bottom: 16,
+              zIndex: 1200,
+              display: { xs: 'none', md: 'flex' }
+            }}
+          >
+            {sidebarOpen ? <ChevronLeftIcon /> : <HistoryIcon />}
+          </Fab>
+
+          {/* Chat Area */}
+          <Box sx={{ 
+            pt: '64px', 
+            height: 'calc(100vh - 64px)',
+            display: 'flex',
+            flexDirection: 'column',
+            width: '100%',
+            maxWidth: 1200,
+            mx: 'auto',
+            px: 2
+          }}>
+            {/* Messages */}
+            <Box sx={{ 
+              flex: 1, 
+              overflowY: 'auto', 
+              py: 2,
+              bgcolor: 'background.default'
+            }}>
+              {messages.map((message, index) => (
+                <Box 
+                  key={index} 
+                  sx={{ 
+                    display: 'flex', 
+                    justifyContent: message.sender === 'user' ? 'flex-end' : 'flex-start',
+                    mb: 2,
+                    px: 2
+                  }}
+                >
+                  <Paper
+                    sx={{
+                      p: 2,
+                      maxWidth: '80%',
+                      bgcolor: message.sender === 'user' 
+                        ? 'primary.main' 
+                        : 'background.paper',
+                      color: message.sender === 'user' 
+                        ? '#fff' 
+                        : 'text.primary',
+                      borderRadius: message.sender === 'user' 
+                        ? '18px 18px 0 18px' 
+                        : '18px 18px 18px 0',
+                      boxShadow: 1
+                    }}
+                  >
+                    <Typography variant="body1">{message.text}</Typography>
+                  </Paper>
+                </Box>
+              ))}
+              
+              {isTyping && (
+                <Box sx={{ display: 'flex', justifyContent: 'flex-start', mb: 2, px: 2 }}>
+                  <Paper sx={{ 
+                    p: 2, 
+                    bgcolor: 'background.paper',
+                    boxShadow: 1
+                  }}>
+                    <Box display="flex" gap={1}>
+                      {[0, 0.3, 0.6].map((delay) => (
+                        <Box
+                          key={delay}
+                          sx={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: '50%',
+                            bgcolor: 'primary.main',
+                            animation: 'typing 1.4s infinite ease-in-out',
+                            animationDelay: `${delay}s`
+                          }}
+                        />
+                      ))}
+                    </Box>
+                  </Paper>
+                </Box>
+              )}
+              
+              <div ref={messagesEndRef} />
+            </Box>
+
+            {/* Input Area - Fixed Width */}
+            <Box sx={{ 
+            // pt: '64px', 
+            // height: 'calc(100vh - 64px)',
+            display: 'flex',
+            flexDirection: 'column',
+            width: '100%',
+            maxWidth: 1200,
+            mx: 'auto',
+            px: 2,
+          }}>
+  <Paper 
+    elevation={3}
+    sx={{
+      width: '100%',
+      maxWidth: 1200, // Matches the container width of the message component
+      p: 2,
+      bgcolor: 'background.paper',
+      borderTopLeftRadius: 25,
+      borderBottomLeftRadius: 25,
+      borderTopRightRadius: 25,
+      borderBottomRightRadius: 25,
+      boxShadow: 'none'
+    }}
+  >
+    
+
+    {/* Input Form (aligned to container width) */}
+    <Box component="form" onSubmit={handleSubmit} sx={{ display: 'flex', gap: 1 }}>
+      <TextField
+        fullWidth // Ensures TextField fills the Paper's width
+        variant="outlined"
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        placeholder="Type your message..."
+        disabled={isTyping}
+        size="small"
+        sx={{
+          '& .MuiOutlinedInput-root': {
+            borderRadius: 4,
+            bgcolor: darkMode ? 'transparent' : 'transparent',
+          },
+        }}
+      />
+      
+      <Button
+        type="submit"
+        variant="contained"
+        color="primary"
+        disabled={!input.trim() || isTyping}
+        sx={{
+          minWidth: '40px',
+          width: '40px',
+          height: '40px',
+          borderRadius: '50%'
+        }}
+      >
+        {isTyping ? <CircularProgress size={20} /> : <SendIcon fontSize="small" />}
+      </Button>
+    </Box>
+    <Box sx={{ display: 'flex', gap: 1,mt:2 }}>
+      <Chip
+        icon={<SearchIcon fontSize="small" />}
+        label="Deep Summary"
+        size="small"
+        sx={{ borderColor: 'primary.main' }}
+      />
+      <Chip
+        icon={<SolutionIcon fontSize="small" />}
+        label="Solution Finder"
+        size="small"
+        sx={{ borderColor: 'primary.main' }}
+      />
+    </Box>
+  </Paper>
+</Box>
+          </Box>
+        </Box>
+      </Box>
+    </ThemeProvider>
+  );
+};
+
+export default Chatbot;
