@@ -1,0 +1,67 @@
+#!/bin/bash
+
+# ============ CONFIG =============
+
+API_URL="https://server.server.abc.com/rest/api/1.0/projects"
+AUTH_TOKEN="HSJSHSHSH"
+OUTPUT_FILE="output.csv"
+
+# ============ FUNCTIONS =============
+
+# Recursive function to find "-dr" folders
+function find_dr_folders_recursive() {
+    local project_name="$1"
+    local repo_slug="$2"
+    local current_path="$3"
+
+    local browse_url="$API_URL/$project_name/repos/$repo_slug/browse/$current_path?limit=1000"
+    local response=$(curl -s -H "Authorization: Bearer $AUTH_TOKEN" "$browse_url")
+
+    # Find all folders in current path
+    local folders=($(echo "$response" | grep -oP '"path":"\K[^"]+'))
+
+    for folder_path in "${folders[@]}"; do
+        folder_name=$(basename "$folder_path")
+
+        if [[ "$folder_name" == *-dr* ]]; then
+            echo "$project_name,$folder_path" >> "$OUTPUT_FILE"
+            echo -e "✅ Found: \e[32m$project_name, $folder_path\e[0m"
+        fi
+
+        # Recurse into subfolders
+        find_dr_folders_recursive "$project_name" "$repo_slug" "$folder_path"
+    done
+}
+
+# ============ MAIN =============
+
+# Check if repo.txt exists
+if [[ ! -f "repo.txt" ]]; then
+    echo "❌ repo.txt file not found!"
+    exit 1
+fi
+
+# Initialize output CSV
+echo "Project Name,Folder Path" > "$OUTPUT_FILE"
+
+# Read projects one by one
+while IFS= read -r project_name; do
+    if [[ -z "$project_name" ]]; then
+        continue
+    fi
+
+    echo -e "\n🔍 Scanning project: \e[34m$project_name\e[0m"
+
+    # Get all repos for the project
+    response=$(curl -s -H "Authorization: Bearer $AUTH_TOKEN" \
+        "$API_URL/$project_name/repos?limit=900")
+
+    repo_slugs=$(echo "$response" | grep -oP '"slug":"\K[^"]+')
+
+    for repo in $repo_slugs; do
+        echo "📂 Scanning repo: $repo"
+        find_dr_folders_recursive "$project_name" "$repo" "k8s/envs/pr"
+    done
+done < repo.txt
+
+echo -e "\n✅ All scanning complete. Results saved to \e[33m$OUTPUT_FILE\e[0m"
