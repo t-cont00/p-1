@@ -1,0 +1,128 @@
+import yaml
+import logging
+import os
+import subprocess
+from deepdiff import DeepDiff
+
+log_file = "comparison_output.log"
+logging.basicConfig(
+    filename=log_file,
+    level=logging.INFO,
+    format="%(levelname)s - %(message)s",
+)
+
+def load_yaml_from_file(file_path):
+    logging.info(f"Loading YAML from file: {file_path}")
+    try:
+        with open(file_path, "r") as f:
+            data = yaml.safe_load(f)
+        return data
+    except FileNotFoundError:
+        logging.error(f"File not found: {file_path}")
+    except yaml.YAMLError as e:
+        logging.error(f"Error parsing YAML in {file_path}: {e}")
+    except Exception as e:
+        logging.error(f"Unexpected error while reading {file_path}: {e}")
+    return None
+
+def write_yaml_to_file(data, file_path):
+    with open(file_path, "w") as f:
+        yaml.dump(data, f, indent=2, width=float("inf"))
+
+def git_checkout_or_create_branch(branch_name):
+    try:
+        branches = subprocess.check_output(['git', 'branch'], text=True)
+        if branch_name in branches:
+            subprocess.run(['git', 'checkout', branch_name])
+        else:
+            subprocess.run(['git', 'checkout', '-b', branch_name])
+    except subprocess.CalledProcessError as e:
+        logging.error("Git branch error: " + str(e))
+
+def git_commit_and_push():
+    subprocess.run(['git', 'add', '.'])
+    subprocess.run(['git', 'commit', '-m', 'mismatch fixed'])
+    subprocess.run(['git', 'push', 'origin', 'mismatchFix'])
+
+def main(file_path_1, file_path_2, output_diff_file="differences.yaml"):
+    logging.info(f"Comparing files:\n 1. {file_path_1}\n 2. {file_path_2}\n")
+    data1 = load_yaml_from_file(file_path_1)
+    data2 = load_yaml_from_file(file_path_2)
+
+    if data1 is None or data2 is None:
+        logging.error("Could not load one or both files.")
+        return
+
+    diff = DeepDiff(data1, data2, ignore_order=True)
+    diff_output = {}
+    indexed_diffs = {}
+    index = 1
+
+    if 'values_changed' in diff:
+        for key, value in diff['values_changed'].items():
+            idx = f"M{index}"
+            diff_output[idx] = {
+                "path": key,
+                "USC1": value['old_value'],
+                "USE5": value['new_value']
+            }
+            indexed_diffs[idx] = key
+            index += 1
+
+    if diff_output:
+        write_yaml_to_file(diff_output, output_diff_file)
+        logging.info(f"Differences written to {output_diff_file}")
+        print(f"{len(diff_output)} mismatches found. Indexes: {', '.join(diff_output.keys())}")
+        choice = input("Do you want to correct a mismatch? (y/n): ").strip().lower()
+        if choice != 'y':
+            print("Terminating...")
+            return
+
+        git_checkout_or_create_branch("mismatchFix")
+
+        selected_index = input("Enter the mismatch index to correct (e.g., M1): ").strip()
+        if selected_index not in diff_output:
+            print("Invalid index.")
+            return
+
+        # Now modify data1 based on selected mismatch
+        key_path = indexed_diffs[selected_index]
+        new_value = diff_output[selected_index]["USE5"]
+
+        # Navigate the path and apply fix
+        keys = key_path.replace("root", "").strip('[]').split('][')
+        ref = data1
+        for k in keys[:-1]:
+            ref = ref[k if not k.isdigit() else int(k)]
+        last_key = keys[-1]
+        ref[last_key if not last_key.isdigit() else int(last_key)] = new_value
+
+        # Write fixed file
+        write_yaml_to_file(data1, file_path_1)
+        print(f"Mismatch {selected_index} corrected.")
+
+        if input("Do you want to create a pull request? (y/n): ").strip().lower() == 'y':
+            git_commit_and_push()
+        else:
+            print("Fix applied locally. No PR created.")
+    else:
+        logging.info("No mismatch found.")
+        print("No mismatch found.")
+
+# === Example usage ===
+if _name_ == "_main_":
+    file_path_1 = "/home/e48718/app/file_to_file/repos/automate_/file-checks/usc1/workflowtemplate_hypothetical-margin-report-template.yaml"
+    file_path_2 = "/home/e48718/app/file_to_file/repos/automate_/file-checks/use5/workflowtemplate_hypothetical-margin-report-template.yaml"
+    output_diff_file = "differences.yaml"
+
+    os.makedirs(os.path.dirname(file_path_1), exist_ok=True)
+    os.makedirs(os.path.dirname(file_path_2), exist_ok=True)
+
+    if not os.path.exists(file_path_1):
+        with open(file_path_1, "w") as f:
+            f.write("key1: value1\nkey2: value2")
+    if not os.path.exists(file_path_2):
+        with open(file_path_2, "w") as f:
+            f.write("key1: value1\nkey2: changed_value")
+
+    main(file_path_1, file_path_2, output_diff_file)
