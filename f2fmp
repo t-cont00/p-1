@@ -1,0 +1,118 @@
+import urllib3
+import yaml
+import json
+import logging
+import os
+
+# Configure Logging
+log_file = "comparison_output.log"
+logging.basicConfig(filename=log_file, level=logging.INFO, format="%(levelname)s: %(message)s")
+
+# Suppress SSL warnings
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+http = urllib3.PoolManager(cert_reqs='CERT_NONE')
+
+# Configuration
+BASE_API_URL = "https://server.server.ser.com/rest/api/1.0/projects/ABC/repos"
+AUTH_TOKEN = "AUTH-token"  # <--- Replace with your token
+HEADERS = {
+    "Authorization": f"Bearer {AUTH_TOKEN}",
+    "Accept": "application/json"
+}
+
+# Recursively get all file paths under a given folder path (paginated)
+def list_files_recursive(base_path):
+    file_map = {}
+    url = f"{BASE_API_URL}/{base_path}?limit=1000"
+    start = 0
+
+    while True:
+        paged_url = f"{url}&start={start}"
+        logging.info(f"Listing files from: {paged_url}")
+        response = http.request("GET", paged_url, headers=HEADERS)
+        if response.status != 200:
+            logging.error(f"Failed to list files: HTTP {response.status}")
+            break
+
+        data = json.loads(response.data.decode("utf-8"))
+        for file_entry in data.get("children", {}).get("values", []):
+            if file_entry["type"] == "FILE" and file_entry["path"]["extension"] in ["yaml", "yml"]:
+                relative_path = file_entry["path"]["to"]
+                file_map["/".join(relative_path)] = "/".join(relative_path)
+            elif file_entry["type"] == "DIRECTORY":
+                sub_path = f"{base_path}/{file_entry['path']['name']}"
+                file_map.update(list_files_recursive(sub_path))
+
+        if data.get("children", {}).get("isLastPage", True):
+            break
+        start = data.get("children", {}).get("nextPageStart", 0)
+
+    return file_map
+
+# Fetch YAML file content from API
+def fetch_yaml_from_api(file_path):
+    url = f"{BASE_API_URL}/{file_path}?raw"
+    logging.info(f"Fetching from URL: {url}")
+    try:
+        response = http.request("GET", url, headers=HEADERS)
+        if response.status != 200:
+            logging.error(f"Failed to fetch {file_path}: HTTP {response.status}")
+            return None
+        content = response.data.decode("utf-8")
+        return yaml.safe_load(content)
+    except Exception as e:
+        logging.error(f"Error fetching file '{file_path}': {e}")
+        return None
+
+# Compare two dictionaries recursively
+def compare_dicts(d1, d2, path="", differences=None):
+    if differences is None:
+        differences = {}
+    for key in d1:
+        full_key = f"{path}.{key}" if path else key
+        if key not in d2:
+            differences[full_key] = {"USC1": d1[key], "USE5": "<missing>"}
+        elif isinstance(d1[key], dict) and isinstance(d2[key], dict):
+            compare_dicts(d1[key], d2[key], full_key, differences)
+        elif d1[key] != d2[key]:
+            differences[full_key] = {"USC1": d1[key], "USE5": d2[key]}
+    for key in d2:
+        full_key = f"{path}.{key}" if path else key
+        if key not in d1:
+            differences[full_key] = {"USC1": "<missing>", "USE5": d2[key]}
+    return differences
+
+# Main logic to compare corresponding files
+def compare_all_files(path_one, path_two):
+    files_one = list_files_recursive(path_one)
+    files_two = list_files_recursive(path_two)
+
+    all_relative_paths = set(files_one.keys()) & set(files_two.keys())
+    final_differences = {}
+
+    for rel_path in all_relative_paths:
+        full_path_one = f"{path_one}/{rel_path}"
+        full_path_two = f"{path_two}/{rel_path}"
+        logging.info(f"Comparing: {full_path_one} <-> {full_path_two}")
+
+        data1 = fetch_yaml_from_api(full_path_one)
+        data2 = fetch_yaml_from_api(full_path_two)
+
+        if data1 is None or data2 is None:
+            logging.warning(f"Skipping comparison for {rel_path} due to fetch error.")
+            continue
+
+        diffs = compare_dicts(data1, data2)
+        if diffs:
+            final_differences[rel_path] = diffs
+
+    # Output to YAML
+    with open("difference.yaml", "w") as f:
+        yaml.dump(final_differences, f, default_flow_style=False, sort_keys=False, width=float("inf"))
+    logging.info("Comparison complete. Differences written to difference.yaml")
+
+# Run the script
+if __name__ == "__main__":
+    path_one = "prj-tre/browse/k8s/envs/pr/usc1"
+    path_two = "prj-tre/browse/k8s/envs/pr/use5"
+    compare_all_files(path_one, path_two)
