@@ -1,3 +1,162 @@
+import urllib3
+import yaml
+import json
+import logging
+import os
+
+# ========== CONFIG ==========
+BASE_API_URL = "https://server.server.ser.com/rest/api/1.0/projects/ABC/repos/prj-tre"
+AUTH_TOKEN = "AUTH-token"  # <--- Replace with your actual token
+
+HEADERS = {
+    "Authorization": f"Bearer {AUTH_TOKEN}",
+    "Accept": "application/json, text/plain",
+}
+
+# Setup logging
+LOG_FILE = "comparison_output.log"
+logging.basicConfig(filename=LOG_FILE, level=logging.INFO, format="%(levelname)s: %(message)s")
+
+# Disable SSL warnings
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+http = urllib3.PoolManager(cert_reqs='CERT_NONE')
+
+# ========== FUNCTION: Compare Two Dicts ==========
+def compare_dicts(d1, d2, path="", differences=None):
+    if differences is None:
+        differences = {}
+
+    for key in d1:
+        full_key = f"{path}.{key}" if path else key
+        if key not in d2:
+            differences[full_key] = {"USC1": d1[key], "USE5": "<missing>"}
+        elif isinstance(d1[key], dict) and isinstance(d2[key], dict):
+            compare_dicts(d1[key], d2[key], full_key, differences)
+        elif d1[key] != d2[key]:
+            differences[full_key] = {"USC1": d1[key], "USE5": d2[key]}
+
+    for key in d2:
+        full_key = f"{path}.{key}" if path else key
+        if key not in d1:
+            differences[full_key] = {"USC1": "<missing>", "USE5": d2[key]}
+
+    return differences
+
+# ========== FUNCTION: Fetch YAML File from API ==========
+def fetch_yaml_from_api(file_path):
+    url = f"{BASE_API_URL}/raw/{file_path}?at=refs%2Fheads%2Fmain"
+    logging.info(f"Fetching from URL: {url}")
+
+    try:
+        response = http.request("GET", url, headers=HEADERS)
+
+        if response.status != 200:
+            logging.error(f"Failed to fetch {file_path}: HTTP {response.status}")
+            return None
+
+        content_type = response.headers.get("Content-Type", "")
+        if "application/x-yaml" in content_type or "text/plain" in content_type:
+            yaml_content = response.data.decode("utf-8")
+            return yaml.safe_load(yaml_content)
+        else:
+            logging.warning(f"Unexpected Content-Type for {file_path}: {content_type}")
+            return None
+
+    except Exception as e:
+        logging.error(f"Error fetching file '{file_path}': {e}")
+        return None
+
+# ========== FUNCTION: Recursively List All YAML Files ==========
+def list_files_recursive(base_path, current_rel_path=""):
+    file_map = {}
+    url = f"{BASE_API_URL}/{base_path}?limit=1000"
+    start = 0
+
+    while True:
+        paged_url = f"{url}&start={start}"
+        logging.info(f"Listing files from: {paged_url}")
+        response = http.request("GET", paged_url, headers=HEADERS)
+
+        if response.status != 200:
+            logging.error(f"Failed to list files: HTTP {response.status}")
+            break
+
+        data = json.loads(response.data.decode("utf-8"))
+        children = data.get("children", {}).get("values", [])
+
+        for entry in children:
+            entry_type = entry.get("type")
+            path_obj = entry.get("path", {})
+            name = path_obj.get("name", "")
+            extension = path_obj.get("extension", "")
+            new_rel_path = f"{current_rel_path}/{name}" if current_rel_path else name
+
+            if entry_type == "FILE" and extension in ["yaml", "yml"]:
+                file_map[new_rel_path] = f"{base_path}/{new_rel_path}"
+            elif entry_type == "DIRECTORY":
+                sub_path = f"{base_path}/{name}"
+                file_map.update(list_files_recursive(sub_path, new_rel_path))
+
+        if data.get("children", {}).get("isLastPage", True):
+            break
+        start = data.get("children", {}).get("nextPageStart", 0)
+
+    return file_map
+
+# ========== MAIN COMPARISON FUNCTION ==========
+def compare_all_files(path_one, path_two):
+    logging.info(f"Scanning:\n - {path_one}\n - {path_two}")
+
+    files_one = list_files_recursive(path_one)
+    files_two = list_files_recursive(path_two)
+
+    common_files = set(files_one.keys()).intersection(set(files_two.keys()))
+
+    if not common_files:
+        logging.warning("No matching files found for comparison.")
+        return
+
+    all_differences = {}
+
+    for rel_path in sorted(common_files):
+        file1 = files_one[rel_path]
+        file2 = files_two[rel_path]
+
+        logging.info(f"Comparing:\n - {file1}\n - {file2}")
+
+        data1 = fetch_yaml_from_api(file1)
+        data2 = fetch_yaml_from_api(file2)
+
+        if data1 is None or data2 is None:
+            logging.warning(f"Skipping comparison for {rel_path} due to fetch failure.")
+            continue
+
+        differences = compare_dicts(data1, data2)
+
+        if differences:
+            logging.info(f"Differences found in {rel_path}")
+            all_differences[rel_path] = differences
+
+    # Output to difference.yaml
+    if all_differences:
+        with open("difference.yaml", "w") as f:
+            yaml.dump(all_differences, f, default_flow_style=False, sort_keys=False, width=(inf))
+        logging.info("✅ Differences written to difference.yaml")
+    else:
+        logging.info("✅ No differences found across all matched files.")
+
+# ========== ENTRY POINT ==========
+if __name__ == "__main__":
+    path_one = "prj-tre/browse/k8s/envs/pr/usc1"
+    path_two = "prj-tre/browse/k8s/envs/pr/use5"
+    compare_all_files(path_one, path_two)
+
+
+
+
+
+
+----------------------------------
 def list_files_recursive(base_path):
     file_map = {}
     url = f"{BASE_API_URL}/{base_path}?limit=1000"
