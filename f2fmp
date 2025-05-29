@@ -1,3 +1,40 @@
+def list_files_recursive(base_path, current_rel_path=""):
+    file_map = {}
+    url = f"{BASE_API_URL}/{base_path}?limit=1000"
+    start = 0
+
+    while True:
+        paged_url = f"{url}&start={start}"
+        logging.info(f"Listing files from: {paged_url}")
+        response = http.request("GET", paged_url, headers=HEADERS)
+
+        if response.status != 200:
+            logging.error(f"Failed to list files: HTTP {response.status}")
+            break
+
+        data = json.loads(response.data.decode("utf-8"))
+        children = data.get("children", {}).get("values", [])
+
+        for entry in children:
+            entry_type = entry.get("type")
+            path_obj = entry.get("path", {})
+            name = path_obj.get("name", "")
+            extension = path_obj.get("extension", "")
+            new_rel_path = f"{current_rel_path}/{name}" if current_rel_path else name
+
+            if entry_type == "FILE" and extension in ["yaml", "yml"]:
+                file_map[new_rel_path] = f"{base_path}/{new_rel_path}"
+            elif entry_type == "DIRECTORY":
+                sub_base_path = f"{base_path}/{name}"
+                file_map.update(list_files_recursive(sub_base_path, new_rel_path))
+
+        if data.get("children", {}).get("isLastPage", True):
+            break
+        start = data.get("children", {}).get("nextPageStart", 0)
+
+    return file_map
+
+-------------------------------------------
 def list_files_recursive(base_path, current_rel_path="", visited=None):
     if visited is None:
         visited = set()
