@@ -1,3 +1,5 @@
+
+
 function doGet() {
   const userEmail = Session.getActiveUser().getEmail();
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -178,3 +180,183 @@ function renderForm(q) {
 }
 
 ----------------Version1-------------------
+
+
+
+
+function doGet() {
+  const userEmail = Session.getActiveUser().getEmail();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const questionSheet = ss.getSheetByName("Sheet1");
+  const responseSheet = ss.getSheetByName("Responses") || ss.insertSheet("Responses");
+
+  if (responseSheet.getLastRow() === 0) {
+    responseSheet.appendRow(["Email", "QuestionID", "Result", "Timestamp"]);
+  }
+
+  const now = new Date();
+  const allResponses = responseSheet.getDataRange().getValues();
+
+  // Get all past responses by this user
+  const userResponses = allResponses.filter(row => row[0] === userEmail);
+
+  // Check if last response was incorrect within 2 minutes
+  const lastIncorrect = userResponses
+    .filter(row => row[2] === "Incorrect")
+    .sort((a, b) => new Date(b[3]) - new Date(a[3]))[0];
+
+  if (lastIncorrect) {
+    const timeDiff = (now - new Date(lastIncorrect[3])) / 60000; // in minutes
+    if (timeDiff < 2) {
+      return HtmlService.createHtmlOutput("<h3>❌ You answered incorrectly. Please wait 2 minutes before retrying.</h3>");
+    }
+  }
+
+  const answeredIds = userResponses.map(row => row[1]);
+  const questions = questionSheet.getDataRange().getValues();
+  questions.shift(); // remove headers
+
+  const unanswered = questions.filter(row => !answeredIds.includes(String(row[0])));
+
+  if (unanswered.length === 0) {
+    return HtmlService.createHtmlOutput("<h3>✅ You have answered all available questions!</h3>");
+  }
+
+  const randomRow = unanswered[Math.floor(Math.random() * unanswered.length)];
+
+  const question = {
+    id: randomRow[0],
+    question: randomRow[1],
+    options: [randomRow[2], randomRow[3], randomRow[4], randomRow[5]],
+    correctAnswer: randomRow[6].split(","),
+    isMulti: randomRow[7] === true,
+    email: userEmail
+  };
+
+  return HtmlService.createHtmlOutput(renderForm(question)).setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+function renderForm(q) {
+  const correctAns = JSON.stringify(q.correctAnswer);
+  const isMulti = q.isMulti;
+
+  return `
+  <html>
+    <head>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <style>
+        body {
+          margin: 0;
+          padding: 0;
+          font-family: 'Segoe UI', sans-serif;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          min-height: 100vh;
+          background: #f5f5f5;
+        }
+        .container {
+          width: 90%;
+          max-width: 500px;
+          background: white;
+          padding: 20px;
+          border-radius: 12px;
+          box-shadow: 0 0 15px rgba(0,0,0,0.1);
+          text-align: center;
+          position: relative;
+        }
+        label { display: block; margin: 10px 0; text-align: left; }
+        .result { font-size: 1.5rem; margin-top: 20px; display: none; }
+        .tick { color: green; font-size: 2rem; }
+        .cross { color: red; font-size: 2rem; }
+        .timer {
+          position: absolute;
+          top: 10px;
+          right: 15px;
+          font-weight: bold;
+          color: #333;
+        }
+        .correct-animate { background: #d4edda !important; transition: background 0.5s ease; }
+        .incorrect-animate { background: #f8d7da !important; transition: background 0.5s ease; }
+      </style>
+    </head>
+    <body>
+      <div class="container" id="quizContainer">
+        <div class="timer" id="timer">10</div>
+        <h2>${q.question}</h2>
+        <form id="quizForm" onsubmit="return checkAnswer();">
+          ${q.options.map((opt, i) => {
+            const type = isMulti ? "checkbox" : "radio";
+            return `<label><input type="${type}" name="opt" value="${String.fromCharCode(65 + i)}"> ${opt}</label>`;
+          }).join('')}
+          <br><input type="submit" value="Submit">
+        </form>
+        <div id="result" class="result"></div>
+      </div>
+
+      <script>
+        let timer = 10;
+        const timerEl = document.getElementById("timer");
+        const form = document.getElementById("quizForm");
+        const result = document.getElementById("result");
+        const container = document.getElementById("quizContainer");
+
+        const countdown = setInterval(() => {
+          timer--;
+          timerEl.textContent = timer;
+          if (timer <= 0) {
+            clearInterval(countdown);
+            timeoutUser();
+          }
+        }, 1000);
+
+        function timeoutUser() {
+          form.style.display = 'none';
+          container.classList.add("incorrect-animate");
+          result.innerHTML = "<div class='cross'>⏱️</div><div>Time Out!</div>";
+          result.style.display = "block";
+          logResult("Timeout");
+        }
+
+        function checkAnswer() {
+          clearInterval(countdown);
+          const selected = Array.from(form.elements['opt'])
+                                .filter(el => el.checked)
+                                .map(el => el.value);
+          const correct = ${correctAns};
+          const isCorrect = selected.length === correct.length &&
+                            selected.every(val => correct.includes(val));
+
+          form.style.display = 'none';
+
+          if (isCorrect) {
+            result.innerHTML = "<div class='tick'>✅</div><div>Correct!</div>";
+            container.classList.add("correct-animate");
+            logResult("Correct");
+          } else {
+            result.innerHTML = "<div class='cross'>❌</div><div>Incorrect</div>";
+            container.classList.add("incorrect-animate");
+            logResult("Incorrect");
+          }
+
+          result.style.display = "block";
+          return false;
+        }
+
+        function logResult(status) {
+          google.script.run.recordResponse("${q.email}", "${q.id}", status);
+        }
+      </script>
+    </body>
+  </html>`;
+}
+
+
+function recordResponse(email, questionId, result) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Responses");
+  sheet.appendRow([email, questionId, result, new Date()]);
+}
+
+
+
+--------------Version-2--------
