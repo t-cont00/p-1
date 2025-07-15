@@ -1,0 +1,280 @@
+function doGet() {
+  return serveQuizPage();
+}
+
+// Main logic to load quiz or thank-you
+function serveQuizPage() {
+  const userEmail = Session.getActiveUser().getEmail();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const questionSheet = ss.getSheetByName("Sheet1");
+  const responseSheet = ss.getSheetByName("Responses") || ss.insertSheet("Responses");
+
+  if (responseSheet.getLastRow() === 0) {
+    responseSheet.appendRow(["Email", "QuestionID", "Result", "Timestamp"]);
+  }
+
+  const userResponses = responseSheet.getDataRange().getValues().filter(row => row[0] === userEmail);
+
+  if (userResponses.length > 0) {
+    return HtmlService.createHtmlOutput(renderThankYouPage());
+  }
+
+  const questions = questionSheet.getDataRange().getValues();
+  questions.shift(); // remove header
+
+  const randomRow = questions[Math.floor(Math.random() * questions.length)];
+
+  const question = {
+    id: randomRow[0],
+    question: randomRow[1],
+    options: [randomRow[2], randomRow[3], randomRow[4], randomRow[5]],
+    correctAnswer: randomRow[6].split(","),
+    isMulti: randomRow[7] === true,
+    email: userEmail
+  };
+
+  return HtmlService.createHtmlOutput(renderForm(question)).setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+// Renders the quiz form with timer and animations
+function renderForm(q) {
+  const correctAns = JSON.stringify(q.correctAnswer);
+  const isMulti = q.isMulti;
+  const bgImageUrl = "https://drive.google.com/thumbnail?id=1gZGplqeJol-JZsQMWo0sBqOqPgTTA5pL";
+
+  return `
+  <html>
+    <head>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <style>
+        * { box-sizing: border-box; }
+        body {
+          margin: 0;
+          padding: 0;
+          font-family: 'Segoe UI', sans-serif;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          min-height: 100vh;
+          background: #f0f2f5;
+          position: relative;
+        }
+        body::before {
+          content: "";
+          position: absolute;
+          top: 0; left: 0; right: 0; bottom: 0;
+          background: url('${bgImageUrl}') no-repeat center center / cover;
+          z-index: -1;
+          opacity: 1;
+        }
+        .container {
+          width: 95%;
+          max-width: 520px;
+          background: rgba(255, 255, 255, 0.95);
+          padding: 30px 24px;
+          border-radius: 20px;
+          box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+          text-align: center;
+          position: relative;
+        }
+        h2 {
+          font-size: 1.4rem;
+          margin-bottom: 20px;
+        }
+        label {
+          display: block;
+          text-align: left;
+          margin-bottom: 14px;
+          font-size: 1.1rem;
+        }
+        input[type="radio"], input[type="checkbox"] {
+          transform: scale(1.3);
+          margin-right: 10px;
+        }
+        input[type="submit"] {
+          margin-top: 18px;
+          padding: 12px 24px;
+          font-size: 1rem;
+          border: none;
+          background-color: #007bff;
+          color: #fff;
+          border-radius: 8px;
+          cursor: pointer;
+          width: 100%;
+        }
+        .timer {
+          position: absolute;
+          top: 14px;
+          right: 20px;
+          font-weight: bold;
+          color: #555;
+          font-size: 1rem;
+        }
+        .result {
+          font-size: 1.3rem;
+          margin-top: 25px;
+          display: none;
+        }
+        .tick {
+          font-size: 3rem;
+          color: green;
+          animation: bounceIn 0.5s ease;
+        }
+        .cross {
+          font-size: 3rem;
+          color: red;
+          animation: bounce 0.6s ease;
+        }
+        .thank {
+          font-size: 1.2rem;
+          color: #333;
+          margin-top: 12px;
+        }
+        .correct-animate {
+          background-color: #d4edda !important;
+          transition: background 0.5s ease;
+        }
+        .incorrect-animate {
+          background-color: #ffe6e6 !important;
+          transition: background 0.5s ease;
+        }
+        @keyframes bounce {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.3); }
+        }
+        @keyframes bounceIn {
+          0% { transform: scale(0); opacity: 0; }
+          60% { transform: scale(1.3); opacity: 1; }
+          100% { transform: scale(1); }
+        }
+        @media (max-width: 480px) {
+          .container {
+            padding: 20px;
+          }
+          h2 {
+            font-size: 1.2rem;
+          }
+          label {
+            font-size: 1rem;
+          }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container" id="quizContainer">
+        <div class="timer" id="timer">20</div>
+        <h2>${q.question}</h2>
+        <form id="quizForm" onsubmit="return checkAnswer();">
+          ${q.options.map((opt, i) => {
+            const type = isMulti ? "checkbox" : "radio";
+            return `<label><input type="${type}" name="opt" value="${String.fromCharCode(65 + i)}"> ${opt}</label>`;
+          }).join('')}
+          <input type="submit" value="Submit">
+        </form>
+        <div id="result" class="result"></div>
+      </div>
+
+      <script>
+        let timer = 20;
+        const timerEl = document.getElementById("timer");
+        const form = document.getElementById("quizForm");
+        const result = document.getElementById("result");
+        const container = document.getElementById("quizContainer");
+
+        const countdown = setInterval(() => {
+          timer--;
+          timerEl.textContent = timer;
+          if (timer <= 0) {
+            clearInterval(countdown);
+            timeoutUser();
+          }
+        }, 1000);
+
+        function timeoutUser() {
+          form.style.display = 'none';
+          container.classList.add("incorrect-animate");
+          result.innerHTML = "<div class='cross'>⏱️</div><div class='thank'>Time's up! Thank you for participating.</div>";
+          result.style.display = "block";
+          logResult("Timeout");
+        }
+
+        function checkAnswer() {
+          clearInterval(countdown);
+          const selected = Array.from(form.elements['opt'])
+                                .filter(el => el.checked)
+                                .map(el => el.value);
+          const correct = ${correctAns};
+          const isCorrect = selected.length === correct.length &&
+                            selected.every(val => correct.includes(val));
+          form.style.display = 'none';
+
+          if (isCorrect) {
+            container.classList.add("correct-animate");
+            result.innerHTML = "<div class='tick'>✅</div><div class='thank'>Correct! Thank you for participating!</div>";
+            logResult("Correct");
+          } else {
+            container.classList.add("incorrect-animate");
+            result.innerHTML = "<div class='cross'>❌</div><div class='thank'>Incorrect! Thank you for participating!</div>";
+            logResult("Incorrect");
+          }
+
+          result.style.display = "block";
+          return false;
+        }
+
+        function logResult(status) {
+          google.script.run.recordResponse("${q.email}", "${q.id}", status);
+        }
+      </script>
+    </body>
+  </html>
+  `;
+}
+
+// Show "already attempted" page
+function renderThankYouPage() {
+  const bgImageUrl = "https://drive.google.com/thumbnail?id=1gZGplqeJol-JZsQMWo0sBqOqPgTTA5pL";
+  return `
+  <html>
+    <head><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: 'Segoe UI', sans-serif;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        background: #f0f2f5;
+        position: relative;
+      }
+      body::before {
+        content: "";
+        position: absolute;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: url('${bgImageUrl}') no-repeat center center / cover;
+        z-index: -1;
+      }
+      .msg {
+        padding: 24px;
+        background: rgba(255, 255, 255, 0.94);
+        border-radius: 16px;
+        box-shadow: 0 0 20px rgba(0,0,0,0.2);
+        text-align: center;
+        max-width: 90%;
+        font-size: 1.2rem;
+      }
+    </style></head>
+    <body><div class="msg">
+      <h3>🚫 You have already attempted the quiz once!</h3>
+    </div></body>
+  </html>
+  `;
+}
+
+// Record the response
+function recordResponse(email, questionId, result) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Responses");
+  sheet.appendRow([email, questionId, result, new Date()]);
+}
