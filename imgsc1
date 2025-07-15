@@ -1,3 +1,17 @@
+function doGet(e) {
+  const sheet = SpreadsheetApp.openById('YOUR_SPREADSHEET_ID').getSheetByName('Sheet1');
+  const urls = sheet.getRange('A1:A').getValues().flat().filter(url => url);
+
+  if (urls.length === 0) {
+    return HtmlService.createHtmlOutput('No form URLs found.');
+  }
+
+  const randomUrl = urls[Math.floor(Math.random() * urls.length)];
+  return HtmlService.createHtmlOutput(`<script>window.location.replace("${randomUrl}");</script>`);
+}
+
+
+-------
 function doGet() {
   return serveQuizPage();
 }
