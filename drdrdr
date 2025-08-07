@@ -1,0 +1,79 @@
+import subprocess
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from tabulate import tabulate
+import sys
+
+def set_kubectx(cluster, namespace):
+    try:
+        subprocess.run(['kubectx', cluster], check=True)
+        subprocess.run(['kubens', namespace], check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"[ERROR] Failed to set context or namespace: {e}")
+        sys.exit(1)
+
+def get_pod_status():
+    try:
+        output = subprocess.check_output(['kubectl', 'get', 'pods'], text=True)
+        lines = output.strip().split('\n')
+        headers = lines[0].split()
+        pod_data = [line.split(None, len(headers)-1) for line in lines[1:]]
+        return headers, pod_data
+    except subprocess.CalledProcessError as e:
+        print(f"[ERROR] Failed to get pod status: {e}")
+        sys.exit(1)
+
+def format_report(headers, data):
+    return tabulate(data, headers=headers, tablefmt='grid')
+
+def send_email(subject, body, to_email, from_email, smtp_server, smtp_port, smtp_user, smtp_pass):
+    msg = MIMEMultipart()
+    msg['Subject'] = subject
+    msg['From'] = from_email
+    msg['To'] = to_email
+
+    msg.attach(MIMEText(body, 'plain'))
+
+    try:
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()
+        server.login(smtp_user, smtp_pass)
+        server.sendmail(from_email, to_email, msg.as_string())
+        server.quit()
+        print("[INFO] Email sent successfully.")
+    except Exception as e:
+        print(f"[ERROR] Failed to send email: {e}")
+
+def main():
+    cluster = input("Enter cluster name (kubectx): ")
+    namespace = input("Enter namespace (kubens): ")
+    recipient = input("Enter recipient email: ")
+
+    # Email configuration
+    from_email = "your-email@example.com"
+    smtp_server = "smtp.gmail.com"
+    smtp_port = 587
+    smtp_user = "your-email@example.com"
+    smtp_pass = "your-app-password"
+
+    set_kubectx(cluster, namespace)
+    headers, pod_data = get_pod_status()
+    report = format_report(headers, pod_data)
+
+    # Print and email
+    print(report)
+
+    send_email(
+        subject=f"[K8s Report] Pods Status in {cluster}/{namespace}",
+        body=report,
+        to_email=recipient,
+        from_email=from_email,
+        smtp_server=smtp_server,
+        smtp_port=smtp_port,
+        smtp_user=smtp_user,
+        smtp_pass=smtp_pass
+    )
+
+if __name__ == '__main__':
+    main()
