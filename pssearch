@@ -1,0 +1,71 @@
+#!/bin/bash
+
+# ------------------------------
+# K8s Namespace Pattern Scanner
+# ------------------------------
+
+APP_IDS_FILE=$1
+PATTERN=$2
+
+if [[ -z "$APP_IDS_FILE" || -z "$PATTERN" ]]; then
+  echo "Usage: $0 <app_ids_file> <pattern>"
+  exit 1
+fi
+
+# Output files
+OUT_PRESENT="patternPresent.csv"
+OUT_ABSENT="patternAbsent.csv"
+OUT_ALL="allCombinedResults.csv"
+
+# Headers
+HEADER="app_id,namespace,pattern_found,resource,line_number"
+
+echo "$HEADER" > "$OUT_PRESENT"
+echo "$HEADER" > "$OUT_ABSENT"
+echo "$HEADER" > "$OUT_ALL"
+
+# Resources to scan
+RESOURCES=("deploy" "sts" "ds" "rs" "job" "cj" "cm" "secret" "svc" "ing" "pod")
+
+# ------------------------------
+# Main Loop
+# ------------------------------
+while read -r APP_ID; do
+  [[ -z "$APP_ID" ]] && continue   # skip blank lines
+
+  for ns_suffix in default dmz 7d; do
+    NS="app-${APP_ID}-${ns_suffix}"
+
+    if ! kubectl get ns "$NS" &>/dev/null; then
+      continue
+    fi
+
+    FOUND="NO"
+
+    for RES in "${RESOURCES[@]}"; do
+      RESLIST=$(kubectl get $RES -n "$NS" -o name 2>/dev/null)
+      for R in $RESLIST; do
+        OUTPUT=$(kubectl get "$R" -n "$NS" -o yaml | grep -n "$PATTERN")
+        if [[ -n "$OUTPUT" ]]; then
+          FOUND="YES"
+          while IFS= read -r line; do
+            LINE_NO=$(echo "$line" | cut -d: -f1)
+            ROW="$APP_ID,$NS,YES,$R,$LINE_NO"
+            echo "$ROW" | tee -a "$OUT_PRESENT" >> "$OUT_ALL"
+          done <<< "$OUTPUT"
+        fi
+      done
+    done
+
+    if [[ "$FOUND" == "NO" ]]; then
+      ROW="$APP_ID,$NS,NO,-,-"
+      echo "$ROW" | tee -a "$OUT_ABSENT" >> "$OUT_ALL"
+    fi
+  done
+done < "$APP_IDS_FILE"
+
+echo ""
+echo "✅ Scan Complete!"
+echo "  - Found matches in:   $OUT_PRESENT"
+echo "  - No matches in:      $OUT_ABSENT"
+echo "  - Combined results:   $OUT_ALL"
