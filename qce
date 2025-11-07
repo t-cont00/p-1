@@ -1,0 +1,62 @@
+function generateTokensAndSendQR() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // ---- SHEETS ----
+  const employeeSheet = ss.getSheetByName("Employee"); 
+  let tokenSheet = ss.getSheetByName("Token");
+
+  // Create Token sheet if not exists
+  if (!tokenSheet) {
+    tokenSheet = ss.insertSheet("Token");
+    tokenSheet.appendRow(["Name", "EmployeeID", "Email", "Token"]);
+  }
+
+  // Read employee data (skip header)
+  const data = employeeSheet.getDataRange().getValues();
+  const header = data[0];
+  const rows = data.slice(1); 
+
+  rows.forEach((row, index) => {
+    const name = row[0];
+    const employeeId = row[1];
+    const email = row[2];
+
+    if (!email || !employeeId) return; // skip invalid rows
+
+    // Generate unique token (UUID)
+    const token = Utilities.getUuid();
+
+    // Add to Token sheet
+    tokenSheet.appendRow([name, employeeId, email, token]);
+
+    // Create QR Code URL using Google Charts API
+    const qrUrl =
+      "https://chart.googleapis.com/chart?cht=qr&chs=400x400&chl=" + encodeURIComponent(token);
+
+    // Fetch QR image as blob
+    const qrBlob = UrlFetchApp.fetch(qrUrl).getBlob().setName("qrcode.png");
+
+    // Prepare email subject and body
+    const subject = `Your unique QR code ${employeeId}`;
+    const body = `
+Hello ${name},
+
+Please find your unique QR code below. 
+Please do NOT share this QR code with anyone.
+
+Regards,
+Event Team
+`;
+
+    // Send Email with inline QR Code
+    GmailApp.sendEmail(email, subject, body, {
+      inlineImages: { qr: qrBlob },
+      htmlBody: body + "<br><br><img src='cid:qr'><br>"
+    });
+
+    // (Optional) Slow down email sending to avoid Gmail limits
+    Utilities.sleep(1000);
+  });
+
+  Logger.log("QR Codes generated and emails sent successfully!");
+}
