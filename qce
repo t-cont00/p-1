@@ -1,62 +1,742 @@
-function generateTokensAndSendQR() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+# Admin
 
-  // ---- SHEETS ----
-  const employeeSheet = ss.getSheetByName("Employee"); 
-  let tokenSheet = ss.getSheetByName("Token");
 
-  // Create Token sheet if not exists
-  if (!tokenSheet) {
-    tokenSheet = ss.insertSheet("Token");
-    tokenSheet.appendRow(["Name", "EmployeeID", "Email", "Token"]);
+// /Users/stiwari/Desktop/My Files/Develop/Event_Attendance_System/Admin.gs
+
+/**
+ * @OnlyCurrentDoc
+ *
+ * The above comment directs Apps Script to limit the scope of file access for this script
+ * to only the current document. This is a good security practice.
+ */
+
+const SPREADSHEET = SpreadsheetApp.getActiveSpreadsheet();
+const EMPLOYEE_SHEET_NAME = "Employee";
+const TOKEN_SHEET_NAME = "Token";
+
+/**
+ * Main function to be run by the admin.
+ * This will generate unique tokens for each employee and populate the 'Token' sheet.
+ *
+ * To run this, open the script editor, select 'generateTokens' from the
+ * function dropdown, and click 'Run'.
+ */
+function generateTokens() {
+  const employeeSheet = SPREADSHEET.getSheetByName(EMPLOYEE_SHEET_NAME);
+  if (!employeeSheet) {
+    SpreadsheetApp.getUi().alert(`Sheet "${EMPLOYEE_SHEET_NAME}" not found!`);
+    return;
   }
 
-  // Read employee data (skip header)
-  const data = employeeSheet.getDataRange().getValues();
-  const header = data[0];
-  const rows = data.slice(1); 
+  const employeeData = employeeSheet.getDataRange().getValues();
+  employeeData.shift(); // Remove header row
 
-  rows.forEach((row, index) => {
-    const name = row[0];
-    const employeeId = row[1];
-    const email = row[2];
+  let tokenSheet = SPREADSHEET.getSheetByName(TOKEN_SHEET_NAME);
+  if (tokenSheet) {
+    tokenSheet.clear();
+  } else {
+    tokenSheet = SPREADSHEET.insertSheet(TOKEN_SHEET_NAME);
+  }
 
-    if (!email || !employeeId) return; // skip invalid rows
+  const tokenHeaders = ["Name", "email_id", "unique_token"];
+  tokenSheet.appendRow(tokenHeaders);
 
-    // Generate unique token (UUID)
-    const token = Utilities.getUuid();
+  const tokens = [];
+  for (const employee of employeeData) {
+    const name = employee[0];
+    const email = employee[1];
+    if (name && email) {
+      const uniqueToken = Utilities.getUuid();
+      tokens.push([name, email, uniqueToken]);
+    }
+  }
 
-    // Add to Token sheet
-    tokenSheet.appendRow([name, employeeId, email, token]);
-
-    // Create QR Code URL using Google Charts API
-    const qrUrl =
-      "https://chart.googleapis.com/chart?cht=qr&chs=400x400&chl=" + encodeURIComponent(token);
-
-    // Fetch QR image as blob
-    const qrBlob = UrlFetchApp.fetch(qrUrl).getBlob().setName("qrcode.png");
-
-    // Prepare email subject and body
-    const subject = `Your unique QR code ${employeeId}`;
-    const body = `
-Hello ${name},
-
-Please find your unique QR code below. 
-Please do NOT share this QR code with anyone.
-
-Regards,
-Event Team
-`;
-
-    // Send Email with inline QR Code
-    GmailApp.sendEmail(email, subject, body, {
-      inlineImages: { qr: qrBlob },
-      htmlBody: body + "<br><br><img src='cid:qr'><br>"
-    });
-
-    // (Optional) Slow down email sending to avoid Gmail limits
-    Utilities.sleep(1000);
-  });
-
-  Logger.log("QR Codes generated and emails sent successfully!");
+  if (tokens.length > 0) {
+    tokenSheet.getRange(2, 1, tokens.length, tokens[0].length).setValues(tokens);
+    SpreadsheetApp.flush(); // Ensure all data is written
+    Logger.log(`${tokens.length} tokens generated.`);
+    SpreadsheetApp.getUi().alert(`${tokens.length} tokens have been generated in the 'Token' sheet.`);
+  } else {
+    Logger.log("No employee data found to process.");
+  }
 }
+
+
+=====================================================
+
+
+#webApp.js
+// /Users/stiwari/Desktop/My Files/Develop/Event_Attendance_System/WebApp.gs
+
+const WEB_APP_SPREADSHEET = SpreadsheetApp.getActiveSpreadsheet();
+const TOKEN_SHEET_NAME_WEBAPP = "Token";
+const ATTENDANCE_SHEET_NAME = "Attendance";
+const EMPLOYEE_SHEET_NAME_WEBAPP = "Employee";
+
+
+/**
+ * Serves the HTML for the web app. This is the entry point.
+ */
+function doGet(e) {
+  return HtmlService.createHtmlOutputFromFile('admin.html')
+    .setTitle("Event Attendance Scanner")
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+}
+
+/**
+ * Creates a custom menu in the spreadsheet when it's opened.
+ * This single onOpen function will manage all custom UI elements.
+ */
+function onOpen() {
+  SpreadsheetApp.getUi()
+      .createMenu('Event Tools')
+      .addItem('Send QR Code Emails', 'showAdminWebApp')
+      .addToUi();
+}
+
+/**
+ * Verifies the scanned token and logs attendance.
+ * This function is called from the client-side JavaScript.
+ * It uses LockService to handle concurrent requests safely.
+ *
+ * @param {string} token The unique token scanned from the QR code.
+ * @return {object} A result object {status, message, name}.
+ */
+
+
+/**
+ * Helper function to get a sheet by name, or create it if it doesn't exist.
+ * @param {string} sheetName The name of the sheet.
+ * @param {Array<string>} headers An array of strings for the header row if creating.
+ * @return {Sheet} The Google Sheet object.
+ */
+function getOrCreateSheet(sheetName, headers) {
+  let sheet = WEB_APP_SPREADSHEET.getSheetByName(sheetName);
+  if (!sheet) {
+    sheet = WEB_APP_SPREADSHEET.insertSheet(sheetName);
+    sheet.appendRow(headers);
+  }
+  return sheet;
+}
+
+
+===============
+
+AdminWebApp.gs
+
+// /Users/stiwari/Desktop/My Files/Develop/Event_Attendance_System/AdminWebApp.gs
+
+const ADMIN_SPREADSHEET = SpreadsheetApp.getActiveSpreadsheet();
+const ADMIN_TOKEN_SHEET_NAME = "Token";
+
+/**
+ * Serves the HTML for the admin web app.
+ * This function is not deployed, but used to launch the UI from a menu.
+ */
+function showAdminWebApp() {
+  const html = HtmlService.createHtmlOutputFromFile('admin.html')
+      .setWidth(600)
+      .setHeight(450);
+  SpreadsheetApp.getUi().showModalDialog(html, 'Send QR Code Emails');
+}
+
+/**
+ * Fetches the token data from the spreadsheet.
+ * This is called by the client-side JavaScript in the web app.
+ * @returns {Array<Array<string>>} A 2D array of token data.
+ */
+function getTokenData() {
+  const tokenSheet = ADMIN_SPREADSHEET.getSheetByName(ADMIN_TOKEN_SHEET_NAME);
+  if (!tokenSheet) {
+    throw new Error(`Sheet "${ADMIN_TOKEN_SHEET_NAME}" not found! Please run 'generateTokens' first.`);
+  }
+  const data = tokenSheet.getDataRange().getValues();
+  data.shift(); // Remove header row
+  return data;
+}
+
+/**
+ * Sends a single email with an embedded QR code.
+ * The QR code image is passed as a base64 data URL from the client.
+ * @param {string} name The recipient's name.
+ * @param {string} email The recipient's email address.
+ * @param {string} qrCodeDataUrl The base64-encoded QR code image.
+ */
+function sendEmailWithQr(name, email, qrCodeDataUrl) {
+  const subject = "Your Event QR Code";
+  
+  // Decode the base64 data URL to get the image blob
+  const blob = Utilities.newBlob(
+    Utilities.base64Decode(qrCodeDataUrl.split(',')[1]), 
+    'image/png', 
+    'qrCodeImage.png'
+  );
+
+  const emailBody = `
+    <p>Hi ${name},</p>
+    <p>Here is your unique QR code for the event. Please have it ready for scanning at the entrance.</p>
+    <img src="cid:qrCodeImage" alt="Your QR Code" />
+    <p>See you at the event!</p>`;
+
+  MailApp.sendEmail({ to: email, subject: subject, htmlBody: emailBody, inlineImages: { qrCodeImage: blob } });
+}
+
+
+==================
+
+
+admin.html
+
+<!DOCTYPE html>
+<html>
+
+<head>
+    <base target="_top">
+    <link rel="stylesheet" href="https://ssl.gstatic.com/docs/script/css/add-ons1.css">
+    <style>
+        .container {
+            padding: 20px;
+        }
+
+        #progress-bar-container {
+            width: 100%;
+            background-color: #f3f3f3;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+
+        #progress-bar {
+            width: 0%;
+            height: 20px;
+            background-color: #4CAF50;
+            text-align: center;
+            line-height: 20px;
+            color: white;
+            border-radius: 5px;
+            transition: width 0.4s ease;
+        }
+
+        #log {
+            margin-top: 15px;
+            font-family: monospace;
+            font-size: 12px;
+            height: 150px;
+            overflow-y: scroll;
+            border: 1px solid #ccc;
+            padding: 5px;
+            background-color: #fafafa;
+        }
+
+        #qr-canvas {
+            display: none;
+            /* Hidden canvas for generating QR codes */
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h2>Send QR Code Emails</h2>
+        <p>This tool will generate QR codes and email them to each employee listed in the 'Token' sheet.</p>
+        <button class="action" id="start-btn">Start Sending Emails</button>
+        <div id="progress-bar-container">
+            <div id="progress-bar">0%</div>
+        </div>
+        <div id="log"></div>
+        <canvas id="qr-canvas"></canvas>
+    </div>
+
+    <!-- Lightweight QR Code generation library -->
+    <script src="https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js"></script>
+
+    <script>
+        const startBtn = document.getElementById('start-btn');
+        const progressBar = document.getElementById('progress-bar');
+        const logDiv = document.getElementById('log');
+        const qrCanvas = document.getElementById('qr-canvas');
+
+        startBtn.addEventListener('click', startProcess);
+
+        function log(message) {
+            logDiv.innerHTML += message + '<br>';
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function updateProgress(value, total) {
+            const percent = total > 0 ? Math.round((value / total) * 100) : 0;
+            progressBar.style.width = percent + '%';
+            progressBar.textContent = percent + '%';
+        }
+
+        function startProcess() {
+            startBtn.disabled = true;
+            log('Fetching employee data from Token sheet...');
+            google.script.run
+                .withSuccessHandler(sendEmailsSequentially)
+                .withFailureHandler(onFailure)
+                .getTokenData();
+        }
+
+        async function sendEmailsSequentially(tokenData) {
+            log(`Found ${tokenData.length} employees to email.`);
+            for (let i = 0; i < tokenData.length; i++) {
+                const [name, email, token] = tokenData[i];
+
+                // 1. Generate QR code in the browser
+                const qr = new QRious({
+                    element: qrCanvas,
+                    value: token,
+                    size: 300
+                });
+                const qrCodeDataUrl = qrCanvas.toDataURL(); // Get as base64
+
+                // 2. Send data to server to email
+                log(`Sending email to ${name} (${email})...`);
+                await new Promise((resolve, reject) => {
+                    google.script.run
+                        .withSuccessHandler(() => {
+                            updateProgress(i + 1, tokenData.length);
+                            resolve();
+                        })
+                        .withFailureHandler(reject)
+                        .sendEmailWithQr(name, email, qrCodeDataUrl);
+                });
+            }
+            log('<strong>Process complete!</strong>');
+            startBtn.disabled = false;
+        }
+
+        function onFailure(error) {
+            log('<span style="color: red;">ERROR: ' + error.message + '</span>');
+            startBtn.disabled = false;
+        }
+    </script>
+</body>
+
+</html>
+
+
+================================
+
+
+#Security
+
+// /Users/stiwari/Desktop/My Files/Develop/Event_Attendance_System/WebApp.gs
+
+const WEB_APP_SPREADSHEET = SpreadsheetApp.getActiveSpreadsheet();
+const TOKEN_SHEET_NAME_WEBAPP = "Token";
+const ATTENDANCE_SHEET_NAME = "Attendance";
+const EMPLOYEE_SHEET_NAME_WEBAPP = "Employee";
+
+
+/**
+ * Serves the HTML for the web app. This is the entry point.
+ */
+function doGet(e) {
+  return HtmlService.createHtmlOutputFromFile('index.html')
+    .setTitle("Event Attendance Scanner")
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+}
+
+/**
+ * Creates a custom menu in the spreadsheet when it's opened.
+ * This single onOpen function will manage all custom UI elements.
+ */
+function onOpen() {
+  SpreadsheetApp.getUi()
+      .createMenu('Event Tools')
+      .addItem('Send QR Code Emails', 'showAdminWebApp')
+      .addToUi();
+}
+
+/**
+ * Verifies the scanned token and logs attendance.
+ * This function is called from the client-side JavaScript.
+ * It uses LockService to handle concurrent requests safely.
+ *
+ * @param {string} token The unique token scanned from the QR code.
+ * @return {object} A result object {status, message, name}.
+ */
+function verifyAndLogAttendance(token) {
+  // Use LockService to prevent race conditions when multiple users scan simultaneously.
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000); // Wait up to 15 seconds for the lock.
+
+  try {
+    const tokenSheet = WEB_APP_SPREADSHEET.getSheetByName(TOKEN_SHEET_NAME_WEBAPP);
+    const attendanceSheet = getOrCreateSheet(ATTENDANCE_SHEET_NAME, ["Name", "email_id", "Status", "Timestamp"]);
+    const employeeSheet = WEB_APP_SPREADSHEET.getSheetByName(EMPLOYEE_SHEET_NAME_WEBAPP);
+
+    if (!tokenSheet || !employeeSheet) {
+      return { status: 'error', message: 'Backend Error: Master sheets not found.' };
+    }
+
+    // 1. Find token in Token sheet
+    const tokenData = tokenSheet.getDataRange().getValues();
+    const tokenRow = tokenData.find(row => row[2] === token); // Assuming token is in column C (index 2)
+
+    if (!tokenRow) {
+      return { status: 'error', message: 'Invalid QR Code. Not found.' };
+    }
+
+    const name = tokenRow[0];
+    const email = tokenRow[1];
+
+    // 2. Cross-validate with Employee master sheet
+    const employeeData = employeeSheet.getDataRange().getValues();
+    const employeeExists = employeeData.some(row => row[0] === name && row[1] === email);
+
+    if (!employeeExists) {
+      return { status: 'error', message: `Verification Failed. ${name} not in master employee list.` };
+    }
+
+    // 3. Check if already marked present
+    const attendanceData = attendanceSheet.getDataRange().getValues();
+    const alreadyLogged = attendanceData.some(row => row[1] === email); // Check by email (index 1)
+
+    if (alreadyLogged) {
+      return { status: 'error', message: `${name} has already checked in.` };
+    }
+
+    // 4. Log attendance
+    const timestamp = new Date();
+    attendanceSheet.appendRow([name, email, "Present", timestamp]);
+
+    return { status: 'success', message: `Welcome, ${name}!`, name: name };
+
+  } catch (e) {
+    Logger.log(`Error in verifyAndLogAttendance: ${e.toString()}`);
+    return { status: 'error', message: `An unexpected error occurred: ${e.message}` };
+  } finally {
+    // Always release the lock
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Helper function to get a sheet by name, or create it if it doesn't exist.
+ * @param {string} sheetName The name of the sheet.
+ * @param {Array<string>} headers An array of strings for the header row if creating.
+ * @return {Sheet} The Google Sheet object.
+ */
+function getOrCreateSheet(sheetName, headers) {
+  let sheet = WEB_APP_SPREADSHEET.getSheetByName(sheetName);
+  if (!sheet) {
+    sheet = WEB_APP_SPREADSHEET.insertSheet(sheetName);
+    sheet.appendRow(headers);
+  }
+  return sheet;
+}
+
+
+
+
+================
+
+index.html
+
+
+<!DOCTYPE html>
+<html>
+
+<head>
+    <base target="_top">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+</head>
+<style>
+    body,
+    html {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        width: 100%;
+        overflow: hidden;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        background-color: #1c1c1e;
+        color: white;
+    }
+
+    #app-container {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        width: 100vw;
+    }
+
+    #scanner-container {
+        flex-grow: 1;
+        position: relative;
+        background-color: black;
+        min-height: 75vh;
+        /* At least 75% of viewport height */
+    }
+
+    #scanner-video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    #scanner-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+
+    .scanner-box {
+        width: 65vw;
+        height: 65vw;
+        max-width: 300px;
+        max-height: 300px;
+        border: 2px solid rgba(255, 255, 255, 0.7);
+        border-radius: 16px;
+        box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
+    }
+
+    #controls {
+        display: flex;
+        justify-content: space-around;
+        align-items: center;
+        padding: 20px;
+        background-color: #2c2c2e;
+        flex-shrink: 0;
+    }
+
+    .btn {
+        padding: 15px 25px;
+        font-size: 16px;
+        font-weight: bold;
+        border: none;
+        border-radius: 12px;
+        cursor: pointer;
+        transition: background-color 0.2s, transform 0.1s;
+    }
+
+    #verify-btn {
+        background-color: #34c759;
+        /* Green */
+        color: white;
+    }
+
+    #verify-btn:disabled {
+        background-color: #555;
+        cursor: not-allowed;
+    }
+
+    #reset-btn {
+        background-color: #007aff;
+        /* Blue */
+        color: white;
+    }
+
+    .btn:active {
+        transform: scale(0.95);
+    }
+
+    #result-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.7);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        z-index: 100;
+        text-align: center;
+    }
+
+    #result-overlay.hidden {
+        display: none;
+    }
+
+    #result-message {
+        font-size: 24px;
+        font-weight: bold;
+        margin-top: 20px;
+        padding: 0 20px;
+    }
+
+    #result-animation {
+        width: 120px;
+        height: 120px;
+        border-radius: 50%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+
+    #result-animation.success {
+        background-color: #34c759;
+        animation: pulse-success 0.5s;
+    }
+
+    #result-animation.success::after {
+        content: '✔';
+        color: white;
+        font-size: 70px;
+    }
+
+    #result-animation.error {
+        background-color: #ff3b30;
+        animation: pulse-error 0.5s;
+    }
+
+    #result-animation.error::after {
+        content: '✖';
+        color: white;
+        font-size: 70px;
+    }
+
+    @keyframes pulse-success {
+        0% {
+            transform: scale(0.8);
+        }
+
+        100% {
+            transform: scale(1);
+        }
+    }
+
+    @keyframes pulse-error {
+        0% {
+            transform: scale(0.8);
+        }
+
+        100% {
+            transform: scale(1);
+        }
+    }
+</style>
+
+<body>
+    <div id="app-container">
+        <div id="scanner-container">
+            <video id="scanner-video"></video>
+            <div id="scanner-overlay">
+                <div class="scanner-box"></div>
+            </div>
+        </div>
+        <div id="controls">
+            <button id="verify-btn" class="btn" disabled>Verifying...</button>
+            <button id="reset-btn" class="btn">Scan Again</button>
+        </div>
+        <div id="result-overlay" class="hidden">
+            <div id="result-animation"></div>
+            <p id="result-message"></p>
+        </div>
+    </div>
+
+    <!-- Using a popular, lightweight QR scanner library -->
+    <script type="text/javascript" src="https://unpkg.com/qr-scanner@1.4.2/qr-scanner.umd.min.js"></script>
+    <?!= HtmlService.createHtmlOutputFromFile('scanner.js').getContent(); ?>
+</body>
+
+<script>
+    // Wait for the window to load before running script
+    window.addEventListener('load', function () {
+        const videoElem = document.getElementById('scanner-video');
+        const verifyBtn = document.getElementById('verify-btn');
+        const resetBtn = document.getElementById('reset-btn');
+        const resultOverlay = document.getElementById('result-overlay');
+        const resultAnimation = document.getElementById('result-animation');
+        const resultMessage = document.getElementById('result-message');
+        let lastScannedToken = null;
+
+        // Initialize the QR Scanner
+        const qrScanner = new QrScanner(
+            videoElem,
+            result => {
+                if (result && result.data) {
+                    lastScannedToken = result.data;
+                    verifyBtn.disabled = false;
+                    verifyBtn.textContent = "Capture and Verify";
+                    qrScanner.stop(); // Stop scanning once a QR is detected
+                }
+            },
+            {
+                highlightScanRegion: true,
+                highlightCodeOutline: true,
+            },
+        );
+
+        // Start the scanner
+        function startScanner() {
+            qrScanner.start().then(() => {
+                resetUI();
+            }).catch(err => {
+                console.error(err);
+                alert('Could not start the camera. Please grant camera permissions.');
+            });
+        }
+
+        function resetUI() {
+            lastScannedToken = null;
+            verifyBtn.disabled = true;
+            verifyBtn.textContent = "Scanning...";
+            resultOverlay.classList.add('hidden');
+        }
+
+        // Event listener for the Verify button
+        verifyBtn.addEventListener('click', () => {
+            if (lastScannedToken) {
+                verifyBtn.disabled = true;
+                verifyBtn.textContent = "Verifying...";
+
+                google.script.run
+                    .withSuccessHandler(onVerificationSuccess)
+                    .withFailureHandler(onVerificationFailure)
+                    .verifyAndLogAttendance(lastScannedToken);
+            }
+        });
+
+        // Event listener for the Reset button
+        resetBtn.addEventListener('click', () => {
+            startScanner();
+        });
+
+        function onVerificationSuccess(result) {
+            showResult(result.status, result.message);
+        }
+
+        function onVerificationFailure(error) {
+            showResult('error', error.message);
+        }
+
+        function showResult(status, message) {
+            resultMessage.textContent = message;
+            resultAnimation.className = ''; // Clear previous classes
+            resultAnimation.classList.add(status); // 'success' or 'error'
+            resultOverlay.classList.remove('hidden');
+
+            // Hide the result overlay after a few seconds
+            setTimeout(() => {
+                if (status === 'success') {
+                    startScanner(); // Automatically start next scan on success
+                } else {
+                    resultOverlay.classList.add('hidden');
+                }
+            }, 3000);
+        }
+
+        // Initial start
+        startScanner();
+    });
+</script>
+
+
+</html>
+
+
+
+
+
+
