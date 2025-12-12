@@ -1,0 +1,43 @@
+import re
+
+def parse(input_text: str):
+    lines = [ln.rstrip("\n") for ln in input_text.splitlines()]
+
+    shapes = {}
+    i = 0
+    while i < len(lines):
+        m = re.match(r"^(\d+):\s*$", lines[i])
+        if not m:
+            if re.match(r"^\d+x\d+:\s*", lines[i]):
+                break
+            i += 1
+            continue
+        idx = int(m.group(1))
+        grid = lines[i+1:i+4]   # 3 rows
+        shapes[idx] = grid
+        i += 4
+
+    area = {k: sum(row.count("#") for row in g) for k, g in shapes.items()}
+
+    regions = []
+    for ln in lines:
+        rm = re.match(r"^(\d+)x(\d+):\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s*$", ln)
+        if rm:
+            W, H = int(rm.group(1)), int(rm.group(2))
+            qs = list(map(int, rm.groups()[2:]))
+            regions.append((W, H, qs))
+
+    return area, regions
+
+with open("input.txt", "r") as f:
+    text = f.read()
+
+area, regions = parse(text)
+
+part1 = 0
+for W, H, qs in regions:
+    need = sum(qs[i] * area[i] for i in range(6))
+    if need <= W * H:
+        part1 += 1
+
+print(part1)  # should print 536
