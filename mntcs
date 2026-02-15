@@ -1,0 +1,218 @@
+cloudsql-postgres-observability.yaml
+
+displayName: "Cloud SQL PostgreSQL - DV Observability"
+gridLayout:
+  columns: 2
+  widgets:
+
+  # CPU Utilization Gauge
+  - title: "CPU Utilization (%)"
+    xyChart:
+      dataSets:
+      - timeSeriesQuery:
+          timeSeriesFilter:
+            filter: metric.type="cloudsql.googleapis.com/database/cpu/utilization"
+            aggregation:
+              alignmentPeriod: 60s
+              perSeriesAligner: ALIGN_MEAN
+      yAxis:
+        label: "CPU %"
+        scale: LINEAR
+
+  # Memory Utilization Gauge
+  - title: "Memory Utilization (%)"
+    xyChart:
+      dataSets:
+      - timeSeriesQuery:
+          timeSeriesFilter:
+            filter: metric.type="cloudsql.googleapis.com/database/memory/utilization"
+            aggregation:
+              alignmentPeriod: 60s
+              perSeriesAligner: ALIGN_MEAN
+
+  # Active Connections
+  - title: "Active Connections"
+    xyChart:
+      dataSets:
+      - timeSeriesQuery:
+          timeSeriesFilter:
+            filter: metric.type="cloudsql.googleapis.com/database/postgresql/num_backends"
+            aggregation:
+              alignmentPeriod: 60s
+              perSeriesAligner: ALIGN_MEAN
+
+  # Disk Utilization
+  - title: "Disk Utilization (%)"
+    xyChart:
+      dataSets:
+      - timeSeriesQuery:
+          timeSeriesFilter:
+            filter: metric.type="cloudsql.googleapis.com/database/disk/utilization"
+            aggregation:
+              alignmentPeriod: 60s
+              perSeriesAligner: ALIGN_MEAN
+
+  # Transaction Count
+  - title: "Transactions Count"
+    xyChart:
+      dataSets:
+      - timeSeriesQuery:
+          timeSeriesFilter:
+            filter: metric.type="cloudsql.googleapis.com/database/postgresql/transactions_count"
+            aggregation:
+              alignmentPeriod: 60s
+              perSeriesAligner: ALIGN_RATE
+
+scorecard:
+  timeSeriesQuery:
+    timeSeriesFilter:
+      filter: metric.type="cloudsql.googleapis.com/database/cpu/utilization"
+  gaugeView:
+    lowerBound: 0
+    upperBound: 1
+
+
+
+cloudsql-dv-singlezone.yaml
+
+displayName: "Cloud SQL PostgreSQL DV - Single Zone Observability"
+
+gridLayout:
+  columns: 2
+  widgets:
+
+  # ===============================
+  # CPU Utilization Gauge
+  # ===============================
+  - title: "CPU Utilization"
+    scorecard:
+      timeSeriesQuery:
+        timeSeriesFilter:
+          filter: metric.type="cloudsql.googleapis.com/database/cpu/utilization"
+          aggregation:
+            alignmentPeriod: 60s
+            perSeriesAligner: ALIGN_MEAN
+      gaugeView:
+        lowerBound: 0
+        upperBound: 1
+
+  # ===============================
+  # Memory Utilization Gauge
+  # ===============================
+  - title: "Memory Utilization"
+    scorecard:
+      timeSeriesQuery:
+        timeSeriesFilter:
+          filter: metric.type="cloudsql.googleapis.com/database/memory/utilization"
+          aggregation:
+            alignmentPeriod: 60s
+            perSeriesAligner: ALIGN_MEAN
+      gaugeView:
+        lowerBound: 0
+        upperBound: 1
+
+  # ===============================
+  # Disk Utilization Gauge
+  # ===============================
+  - title: "Disk Utilization"
+    scorecard:
+      timeSeriesQuery:
+        timeSeriesFilter:
+          filter: metric.type="cloudsql.googleapis.com/database/disk/utilization"
+          aggregation:
+            alignmentPeriod: 60s
+            perSeriesAligner: ALIGN_MEAN
+      gaugeView:
+        lowerBound: 0
+        upperBound: 1
+
+  # ===============================
+  # CPU Trend
+  # ===============================
+  - title: "CPU Utilization Trend"
+    xyChart:
+      dataSets:
+      - timeSeriesQuery:
+          timeSeriesFilter:
+            filter: metric.type="cloudsql.googleapis.com/database/cpu/utilization"
+            aggregation:
+              alignmentPeriod: 60s
+              perSeriesAligner: ALIGN_MEAN
+
+  # ===============================
+  # Active Connections
+  # ===============================
+  - title: "Active Connections"
+    xyChart:
+      dataSets:
+      - timeSeriesQuery:
+          timeSeriesFilter:
+            filter: metric.type="cloudsql.googleapis.com/database/postgresql/num_backends"
+            aggregation:
+              alignmentPeriod: 60s
+              perSeriesAligner: ALIGN_MEAN
+
+  # ===============================
+  # Transactions Rate
+  # ===============================
+  - title: "Transactions Rate"
+    xyChart:
+      dataSets:
+      - timeSeriesQuery:
+          timeSeriesFilter:
+            filter: metric.type="cloudsql.googleapis.com/database/postgresql/transactions_count"
+            aggregation:
+              alignmentPeriod: 60s
+              perSeriesAligner: ALIGN_RATE
+
+  # ===============================
+  # Disk Read Ops
+  # ===============================
+  - title: "Disk Read Ops"
+    xyChart:
+      dataSets:
+      - timeSeriesQuery:
+          timeSeriesFilter:
+            filter: metric.type="cloudsql.googleapis.com/database/disk/read_ops_count"
+            aggregation:
+              alignmentPeriod: 60s
+              perSeriesAligner: ALIGN_RATE
+
+  # ===============================
+  # Disk Write Ops
+  # ===============================
+  - title: "Disk Write Ops"
+    xyChart:
+      dataSets:
+      - timeSeriesQuery:
+          timeSeriesFilter:
+            filter: metric.type="cloudsql.googleapis.com/database/disk/write_ops_count"
+            aggregation:
+              alignmentPeriod: 60s
+              perSeriesAligner: ALIGN_RATE
+
+  # ===============================
+  # Network Sent Bytes
+  # ===============================
+  - title: "Network Sent Bytes"
+    xyChart:
+      dataSets:
+      - timeSeriesQuery:
+          timeSeriesFilter:
+            filter: metric.type="cloudsql.googleapis.com/database/network/sent_bytes_count"
+            aggregation:
+              alignmentPeriod: 60s
+              perSeriesAligner: ALIGN_RATE
+
+  # ===============================
+  # Network Received Bytes
+  # ===============================
+  - title: "Network Received Bytes"
+    xyChart:
+      dataSets:
+      - timeSeriesQuery:
+          timeSeriesFilter:
+            filter: metric.type="cloudsql.googleapis.com/database/network/received_bytes_count"
+            aggregation:
+              alignmentPeriod: 60s
+              perSeriesAligner: ALIGN_RATE
